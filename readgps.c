@@ -100,29 +100,29 @@ int main(int argc, char ** argv) {
 	fprintf(stderr,"Position %d byte 0x%02x\n", i, tsbuf[i]);
       }
     }
-    fprintf(stderr,"GPS ");
-    for(i=1;i<QUALPOS;i++) fprintf(stderr,"%c",tsbuf[i]);
-    fprintf(stderr," TQUAL");
+    fprintf(stdout,"GPS ");
+    for(i=1;i<QUALPOS;i++) fprintf(stdout,"%c",tsbuf[i]);
+    fprintf(stdout," TQUAL");
     switch(tsbuf[QUALPOS]) {
-    case ' ': fprintf(stderr,"(' ' exclnt.,<1us)"); break;
-    case '.': fprintf(stderr,"('.' v.good,<10us)"); break;
-    case '*': fprintf(stderr,"('*' good,<100us)"); break;
-    case '#': fprintf(stderr,"('#' fair,<1ms)"); break;
-    case '?': fprintf(stderr,"('?' poor,>1ms)"); break;
-    default:  fprintf(stderr," UNKNOWN!"); break;
+    case ' ': fprintf(stdout,"(' ' exclnt.,<1us)"); break;
+    case '.': fprintf(stdout,"('.' v.good,<10us)"); break;
+    case '*': fprintf(stdout,"('*' good,<100us)"); break;
+    case '#': fprintf(stdout,"('#' fair,<1ms)"); break;
+    case '?': fprintf(stdout,"('?' poor,>1ms)"); break;
+    default:  fprintf(stdout," UNKNOWN!"); break;
     }
-    fprintf(stderr," DOR ");
+    fprintf(stdout," DOR ");
     t = 0L;
     for(i=QUALPOS+1;i<TSBUFLEN;i++) {
-      fprintf(stderr,"%02x", (unsigned char) tsbuf[i]);
+      fprintf(stdout,"%02x", (unsigned char) tsbuf[i]);
       t <<= 8;
       t |= (unsigned char) tsbuf[i];
     }
     if(dodiff && nok > 0) {
       unsigned long dt = (unsigned long) (t - tlast);
-      fprintf(stderr," dt=%lu ticks", dt);
+      fprintf(stdout," dt=%lu ticks", dt);
     }
-    fprintf(stderr,"\n");
+    fprintf(stdout,"\n");
     tlast = t;
     nok++;
     if(oneshot || die) break;
