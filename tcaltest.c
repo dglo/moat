@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.1 2005-03-14 23:50:48 jacobsen Exp $
+   $Id: tcaltest.c,v 1.2 2005-03-15 20:48:23 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -174,7 +174,7 @@ int main(int argc, char *argv[]) {
     if(!dofile) {
       file = open(datafile, O_RDWR);
       if(file <= 0) {
-	printf("Can't open file %s: %s\n", datafile, strerror(errno));
+	fprintf(stderr,"Can't open file %s: %s\n", datafile, strerror(errno));
 	exit(errno);
       }
     }
@@ -213,7 +213,7 @@ int main(int argc, char *argv[]) {
 	  rdtimeouts++;
 	} else {
 	  if(! no_show) {
-	    printf("cal(%ld) READ RETRY(%d)\n", icalib, itry);
+	    fprintf(stderr,"cal(%ld) READ RETRY(%d)\n", icalib, itry);
 	  }
 	  randsleep(1000);
 	  continue;
