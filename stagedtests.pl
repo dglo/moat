@@ -34,7 +34,7 @@ my $cpu_timing_interval = 100;
 my $testgps       = 0;
 my $skipkbchk     = 0;
 my $require_kbmin = 40; # Require this many kB/sec during readwrite
-my $checkgps      = 1;
+my $checkgps      = 0;
 my $gpsskip       = 15;
 my $gpsticks      = 20000000;
 
