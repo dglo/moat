@@ -1,0 +1,11 @@
+
+
+MOAT test scripts
+
+John Jacobsen
+
+Factored out of dor-driver in March, 2005
+
+First release notes:
+
+fixed tcaltest so that it complains and stops if wire pair power is off.
