@@ -792,7 +792,7 @@ sub check_log_files {
     if($ntcals > 0 && ! $skiptcal) {
 	for($i=0; $i<$ndoms; $i++) {
 	    my $tcalout = "tcal_results_c$card{$i}"."w$pair{$i}"."d$dom{$i}.out";
-	    my $tail = `grep -v RETRY | tail -1`;
+	    my $tail = `grep -v RETRY $tcalout | tail -1 2>&1`;
 	    print $tail;
 # /proc/driver/domhub/card0/pair0/domB/tcalib: 2380 tcals, 0 rdtimeouts, 0 wrtimeouts.
 	    if($tail !~ m|/proc/driver/domhub/card\d+/pair\d+/dom\S/tcalib: \d+ tcals|) {
