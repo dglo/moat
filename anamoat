@@ -76,6 +76,10 @@ for(@tests) {
 	my %txbytes;
 	my %rxbytes;
 	my %totbadpkts;
+	my %ntxci;
+	my %ntxic;
+	my %nrxci;
+	my %nrxic;
 	for(@doms) {
 	    # print "+++\n$_\n---\n";
 	    if(/dhc(\d+)w(\d+)d(\S)/) {
@@ -85,6 +89,16 @@ for(@tests) {
 		my $dom  = "$card$pair$aorb";
 		push @domlist, $dom;
 		print "$card $pair $aorb ";
+		if(/BADSEQ=\d+ NCTRL=\d+ NCI=(\d+) NIC=(\d+)/) {
+		    $nrxci{$dom} = $1;
+		    $nrxic{$dom} = $2;
+		    print "RXCI=$1 RXIC=$2 ";
+		}
+		if(/NRETXQ=\d+ NCTRL=\d+ NCI=(\d+) NIC=(\d+)/) {
+		    $ntxci{$dom} = $1;
+		    $ntxic{$dom} = $2;
+		    print "TXCI=$1 TXIC=$2 ";
+		}		    
 		if(/RESENT=(\d+)/) {
 		    $resent{$dom} = $1;
 		    print "RESENT=$1 " if $1 > 0;
