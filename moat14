@@ -1,0 +1,12 @@
+#!/usr/bin/perl
+
+# moat14
+# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# Started: Sun Jan 16 16:21:24 2005
+
+use strict;
+my $cmd = "moat -d 10 -c 600 -g -r 25200 -t 3600";
+print "$cmd\n";
+exec $cmd;
+__END__
+

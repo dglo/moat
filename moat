@@ -1,0 +1,323 @@
+#!/usr/bin/perl
+
+# moat - mother of all (driver) tests
+# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# Started: Fri Aug 13 08:38:05 2004
+
+my $Id = "Id"; my $id = "$Id: moat,v 1.1 2005-03-14 23:56:01 jacobsen Exp $x";
+
+package MY_PACKAGE;
+use strict;
+use Getopt::Long;
+
+sub off_all; sub on_all;
+sub check_for_running_processes; sub kill_running_processes;
+
+my $relsecs  = 8 * 3600; # 8 hrs
+my $cbsecs   = 10 * 60;  # 10 min
+my $savtsecs = 0;
+my $skipmjb;
+my $fixsingle;
+
+sub usage { return <<EOF;
+Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
+           [-h|-help]           Show these options
+	   [-n <N>]             Number of times to perform all tests (default=1)
+	   [-d|-dorfreq <MHz>]  Specify DOR clock frequency
+	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
+	                        (default $cbsecs)
+	   [-g|-testgps]        Test GPS functions as part of stagedtests (10 MHz only!)
+	   [-r|-relsecs]        Number of seconds for "release" stagedtests runs
+	                        (default $relsecs)
+	   [-t|-savetsecs]      Number of seconds for same, saving tcal data
+	                        (default $savtsecs)
+	   [-f|-fixsingle]      Single packet length for stagedtests initial
+	                        echo test (default: random)
+           [-s|-skipmjb]        Skip MJB test 
+	   [-k|-kill]           Kill all test processes
+
+EOF
+;
+	}
+
+my $help;
+my $dorfreq;
+my $testgps;
+my $kill;
+my $n        = 1;
+my @exclude;
+
+GetOptions("help|h"          => \$help,
+	   "skipmjb|s"       => \$skipmjb,
+           "dorfreq|d=i"     => \$dorfreq,
+	   "relsecs|r=i"     => \$relsecs,
+	   "cbsecs|c=i"      => \$cbsecs,
+	   "testgps|g"       => \$testgps,
+	   "exclude|e=s"     => \@exclude,
+	   "savetsecs|t=i"   => \$savtsecs,
+	   "fixsingle|f=i"   => \$fixsingle,
+	   "kill|k"          => \$kill,
+	   "n=i"             => \$n) || die usage;
+die usage if $help;
+
+my @doms = @ARGV;
+
+my $fsarg = (defined $fixsingle) ? "-f $fixsingle" : "";
+
+print "Welcome to $0 by jacobsen\@npxdesigns.com.\n";
+
+if($kill) {
+    kill_running_processes;
+    exit;
+}
+
+check_for_running_processes;
+
+while(!defined $dorfreq) {
+    print "Enter clock frequency (10 or 20) in Mhz: ";
+    $dorfreq = <STDIN>; chomp $dorfreq;
+    last if $dorfreq == 10 || $dorfreq == 20;
+}
+
+die usage if($testgps && $dorfreq != 10);
+my $gpsflag = $testgps ? "-g" : "";
+
+if(defined @exclude) {
+    print "Exclude not implemented yet, sorry.\n\n";
+    die usage;
+}
+
+my ($sec,$min,$hr,$mday,$mon,$yr,$wday,$yday,$isdst) = localtime;
+$yr += 1900;
+$mon++;
+my $ts = sprintf("$yr-%02d-%02d__%02d:%02d:%02d", $mon, $mday, $hr, $min, $sec);
+my $testdir = "MOAT__$ts";
+my $logfile = "MOAT.out";
+
+print "Creating $testdir... ";
+mkdir $testdir || die "Can't create $testdir: $!\n";
+print "OK.\n";
+print "Creating symlink latest_moat to $testdir... ";
+if(-e "latest_moat") {
+    unlink "latest_moat" || die "Can't unlink existing latest_moat: $!\n";
+}
+symlink($testdir, "latest_moat")
+    || die "Can't symlink $testdir"."->latest_moat: $!.\n";
+
+chdir $testdir || die "Can't chdir $testdir: $!\n";
+
+open LOG, ">$logfile" || die "Can't open $logfile: $!\n";
+my $ofh = select(LOG); $| = 1; select $ofh;
+sub mydie { my $m = shift; print LOG $m; die $m; }
+print "\nResults to appear in directory $testdir\n\n";
+
+my $st_in;
+if(@doms) {
+    for(@doms) {
+	tr/[a-z]/[A-Z]/;
+	if(/(\d)(\d)(\S)/) {
+	    $st_in .= "$1 $2 $3\n";
+	}
+    }
+    $st_in .= "DONE\n";
+}
+
+my $dom_list = join ' ', @doms;
+
+exit if fork;
+
+print LOG "MOAT: Started at ".(scalar localtime)."\n";
+print LOG "      CVS $id\n";
+
+my $have_failure = 0;
+
+for(my $iter=0; $iter<$n; $iter++) {
+    print LOG "\n\nMOAT test iteration $iter...\n";
+    my $iterd = sprintf("test%03d",$iter);
+    mkdir $iterd || mydie "Can't mkdir $iterd: $!\n";
+    chdir $iterd || mydie "Can't chdir $iterd: $!\n";
+
+    if($cbsecs > 0) {
+	#### stagedtests (echo test) of configboot 
+	my $cbet = "configboot_echotest";
+	mkdir $cbet || mydie "Can't mkdir $cbet: $!\n";
+	chdir $cbet || mydie "Can't chdir $cbet: $!\n";
+	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
+	open ST, ">st.in"; print ST $st_in; close ST;
+	my $stcmd = "/usr/local/bin/stagedtests.pl -b -t $cbsecs -x -d $dorfreq $fsarg "
+	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p");
+	print LOG "\n\nMOAT: Starting $stcmd\n";
+	system "$stcmd 2>&1 > st.out";
+	my $stresult = `tail -1 st.out`;
+	print LOG $stresult;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
+	if($stresult !~ /SUCCESS/) {
+	    print LOG "\n\nStagedtests/echo test with configboot firmware FAILED".
+		" on trial $iter.\n";
+	    $have_failure = 1;
+	    chdir "..";
+	    last;
+	}
+    }
+
+    if($savtsecs > 0) {
+	#### stagedtests of release firmware as above, but save tcalib data
+	my $rest = "save_tcal_stagedtests";
+	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
+	chdir $rest || mydie "Can't chdir $rest: $!\n";
+	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
+        open ST, ">st.in"; print ST $st_in; close ST;
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
+	    .(defined $st_in ? "st.in" : "-p");
+	print LOG "\n\nMOAT: Starting $stcmd\n";
+	system "$stcmd 2>&1 > st.out";
+	my $stresult = `tail -1 st.out`;
+	print LOG $stresult;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
+	if($stresult !~ /SUCCESS/) {
+	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
+	    $have_failure = 1;
+	    chdir "..";
+	    last;
+	}
+    }
+
+    if($relsecs > 0) {
+	#### stagedtests (echo test + tcaltest) of release firmware
+	my $rest = "release_stagedtests";
+	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
+	chdir $rest || mydie "Can't chdir $rest: $!\n";
+	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
+        open ST, ">st.in"; print ST $st_in; close ST;
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
+	    .(defined $st_in ? "st.in" : "-p");
+	print LOG "\n\nMOAT: Starting $stcmd\n";
+	system "$stcmd 2>&1 > st.out";
+	my $stresult = `tail -1 st.out`;
+	print LOG $stresult;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
+	if($stresult !~ /SUCCESS/) {
+	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
+	    $have_failure = 1;
+	    chdir "..";
+	    last;
+	}
+    }
+
+    if(!$skipmjb && $st_in ne "") {
+	my $mjbdir = "mjb";
+	mkdir $mjbdir || mydie "Can't mkdir $mjbdir: $!\n";
+	chdir $mjbdir || mydie "Can't chdir $mjbdir: $!\n";
+	my $wdpath = `pwd`; chomp $wdpath;
+	my $mjb_results = "$wdpath/mjb_results.dat";
+	my $mjbcmd = "/usr/local/bin/run-mjb $mjb_results"; 
+	print LOG "\n\nMOAT: Starting mjb...\n";
+	system "$mjbcmd 2>&1 > mjb.out";
+	my $mjbresult = `cat mjb.out`;
+	print LOG $mjbresult;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
+	if($mjbresult =~ /FAIL/) {
+	    print LOG "\n\nmjb FAILED on iteration $iter.\n";
+	    $have_failure = 1;
+	    chdir "..";
+	    last;
+	}
+    }
+
+
+#     #### Do a short newpkttest for a few minutes just to make sure
+#     #### softboot and flow control are ok
+
+#     print LOG "\n\nMOAT: Powering DOMs off, then on...\n";
+#     off_all;
+#     on_all;
+#     my $newp = "newpkt_test";
+#     mkdir $newp || mydie "Can't mkdir $newp: $!\n";
+#     chdir $newp || mydie "Can't chdir $newp: $!\n";
+#     my $newpktcmd = "/usr/local/bin/newpkttest.pl -p -n 1";
+#     print LOG "\n\nMOAT: Starting $newpktcmd\n";
+#     my $npresult = `$newpktcmd 2>&1`;
+#     print LOG $npresult;
+#     if($npresult !~ /SUCCESS/) {
+# 	print LOG "\n\nnewpkttest FAILED on iteration $iter.\n";
+# 	$have_failure = 1;
+#         last;
+#     }
+#
+#    chdir ".." || mydie "Can't chdir ..: $!\n";
+
+    #### Done with tests this iteration
+    chdir ".." || mydie "Can't chdir ..: $!\n";
+
+    print LOG "MOAT: Test iteration $iter succeeded.\n";
+}
+
+print LOG "MOAT: Powering off all DOMs.\n";
+off_all;
+
+my $now = scalar localtime;
+if($have_failure) {
+    print LOG "\n\n\nMOAT: Tests ended with FAILURE at $now.\n";
+    open FAIL, ">FAIL" || mydie "Can't open status file FAIL: $!\n";
+    print FAIL " ";
+    close FAIL;
+} else {
+    print LOG "\n\n\nMOAT: Tests ended SUCCESSFULLY at $now.\n";
+    open SUCC, ">SUCCESS" || mydie "Can't open status file SUCCESS: $!\n";
+    print SUCC " ";
+    close SUCC;
+}
+
+exit;
+
+sub off_all {
+    system "echo off > /proc/driver/domhub/pwrall";
+}
+
+sub on_all {
+    system "echo on > /proc/driver/domhub/pwrall";
+}
+
+sub have_running_processes {
+    my @haveEm;
+    my @ps = `ps --columns 1000 ax`;
+    foreach my $ps(@ps) {
+	chomp $ps;
+	if($ps =~ m|/usr/local/bin/readwrite| ||
+	   $ps =~ m|/usr/local/bin/tcaltest|  ||
+	   $ps =~ m|/usr/local/bin/run-mjb|   ||
+	   $ps =~ m|/bin/bash ./mjb.sh|       ||
+	   $ps =~ m|/usr/local/bin/readgps|   ||
+	   $ps =~ m|/usr/local/bin/moat|      ||
+	   $ps =~ m|/usr/local/bin/stagedtests.pl|) {
+	    my $pid = (split ' ', $ps)[0];
+	    if($pid != $$) {
+		print "Existing process \"$ps\"...\n";
+		push @haveEm, $pid;
+	    }
+	}
+    }
+    return @haveEm;
+}
+
+sub check_for_running_processes {
+    die "Existing processes would interfere; please kill before starting MOAT.\n"
+	if scalar have_running_processes;
+}
+
+
+sub kill_running_processes {
+    my @existing = have_running_processes;
+    if(@existing) {
+	for(@existing) {
+	    print "Killing process $_...\n";
+	    kill(9, $_) unless $_ == $$;
+	}
+	check_for_running_processes;
+    } else {
+	print "Nothing running to kill.\n";
+    }
+}    
+	   
+__END__
+
