@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.1 2005-03-14 23:56:01 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.2 2005-03-15 22:23:17 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -61,6 +61,7 @@ GetOptions("help|h"          => \$help,
 die usage if $help;
 
 my @doms = @ARGV;
+my $cmdline_doms = scalar @doms;
 
 my $fsarg = (defined $fixsingle) ? "-f $fixsingle" : "";
 
@@ -93,6 +94,7 @@ $mon++;
 my $ts = sprintf("$yr-%02d-%02d__%02d:%02d:%02d", $mon, $mday, $hr, $min, $sec);
 my $testdir = "MOAT__$ts";
 my $logfile = "MOAT.out";
+my $versionfile = "version";
 
 print "Creating $testdir... ";
 mkdir $testdir || die "Can't create $testdir: $!\n";
@@ -110,6 +112,10 @@ open LOG, ">$logfile" || die "Can't open $logfile: $!\n";
 my $ofh = select(LOG); $| = 1; select $ofh;
 sub mydie { my $m = shift; print LOG $m; die $m; }
 print "\nResults to appear in directory $testdir\n\n";
+
+open VERSION, ">$versionfile" || die "Can't open $versionfile: $!\n";
+print VERSION `/usr/local/bin/domhub-version`;
+close VERSION;
 
 my $st_in;
 if(@doms) {
@@ -204,7 +210,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	}
     }
 
-    if(!$skipmjb && $st_in ne "") {
+    if(!$skipmjb && $cmdline_doms == 0) {
 	my $mjbdir = "mjb";
 	mkdir $mjbdir || mydie "Can't mkdir $mjbdir: $!\n";
 	chdir $mjbdir || mydie "Can't chdir $mjbdir: $!\n";
