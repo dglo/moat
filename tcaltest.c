@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.2 2005-03-15 20:48:23 jacobsen Exp $
+   $Id: tcaltest.c,v 1.3 2005-03-15 21:58:25 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -44,7 +44,8 @@ struct dh_tcalib_t tcalrec;
 
 int tcal_data_ok(int dor_clock, struct dh_tcalib_t *tcalrec);
 void show_tcalrec(FILE *fp, struct dh_tcalib_t *tcalrec);
-int getProcFile(char *filename, int len, char *arg);
+int getProcFile(char *filename, int len, char *arg, int * icard, int * ipair, char * cdom);
+int chkpower(int icard, int ipair);
 
 void randsleep(int usec) {
   int j;
@@ -70,6 +71,8 @@ int main(int argc, char *argv[]) {
   char datafile[NS];
 #define MAXSKIP 1024
   char skipbuf[MAXSKIP];
+  int icard, ipair;
+  char cdom;
   int dofile = 0;
   int dor_clock = 10; /* 10 MHz (DSB) version is default */
   int skipbytes = 0;
@@ -155,7 +158,7 @@ int main(int argc, char *argv[]) {
       }
     }
   } else {
-    if(getProcFile(datafile, NS, argv[optind])) exit(usage());
+    if(getProcFile(datafile, NS, argv[optind], &icard, &ipair, &cdom)) exit(usage());
   }
 
   signal(SIGQUIT, argghhhh); /* "Die, suckah..." */
@@ -165,6 +168,13 @@ int main(int argc, char *argv[]) {
   for(icalib=0; icalib < ntrials; icalib++) {
 
     if(die) break; /* Signal handler argghhhh sets die so we quit */
+
+    /* Make sure power to this wire pair is on */
+    if(chkpower(icard, ipair)) {
+      fprintf(stderr, "%s: Can't perform tcalib, card %d pair %d not powered on.\n",
+	      datafile, icard, ipair);
+      exit(-1);
+    }
 
     if(icalib > 0 && !(icalib % 10)) {
       fprintf(stderr, "%s: %ld tcals, %ld rdtimeouts, %ld wrtimeouts.\n",
@@ -343,26 +353,53 @@ void show_tcalrec(FILE *fp, struct dh_tcalib_t * tcalrec) {
   fprintf(fp, "%d)\n", tcalrec->domwf[DH_MAX_TCAL_WF_LEN-1]);
 }
 
-int getProcFile(char * filename, int len, char *arg) {
+int getProcFile(char * filename, int len, char *arg, int *icard, int *ipair, char *cdom) {
   /* copy at most len characters into filename based on arg.
      If arg is of the form "00a" or "00A", file filename
-     as "/dev/dhc0w0dA"; otherwise return a copy of arg. */
+     as "/proc/driver/domhub/card0/pair0/domA/tcalib"; 
+     otherwise return a copy of arg. Fill in card, pair, dom */
 
-  int icard, ipair;
-  char cdom;
-  if(len < 13) return 1;
+  if(len < 3) return 1;
   if(arg[0] >= '0' && arg[0] <= '7') { /* 00a style */
-    icard = arg[0]-'0';
-    ipair = arg[1]-'0';
-    cdom = arg[2];
-    if(cdom == 'a') cdom = 'A';
-    if(cdom == 'b') cdom = 'B';
-    if(icard < 0 || icard > 7) return 1;
-    if(ipair < 0 || ipair > 3) return 1;
-    if(cdom != 'A' && cdom != 'B') return 1;
-    snprintf(filename, len, "/proc/driver/domhub/card%d/pair%d/dom%c/tcalib", icard, ipair, cdom);
+    *icard = arg[0]-'0';
+    *ipair = arg[1]-'0';
+    *cdom = arg[2];
+    if(*cdom == 'a') *cdom = 'A';
+    if(*cdom == 'b') *cdom = 'B';
+    if(*icard < 0 || *icard > 7) return 1;
+    if(*ipair < 0 || *ipair > 3) return 1;
+    if(*cdom != 'A' && *cdom != 'B') return 1;
+    snprintf(filename, len, "/proc/driver/domhub/card%d/pair%d/dom%c/tcalib", 
+	     *icard, *ipair, *cdom);
   } else {
+    if(sscanf(arg, "/proc/driver/domhub/card%d/pair%d/dom%c/tcalib",
+	      icard, ipair, cdom) != 3) {
+      fprintf(stderr, "Couldn't parse proc file string %s, sorry.\n", arg);
+      return 1;
+    }
     memcpy(filename, arg, strlen(arg)>len?len:strlen(arg));
   }
+  return 0;
+}
+
+int chkpower(int icard, int ipair) {
+  char buf[1024];
+  char target[1024];
+  snprintf(buf,    1024, "/proc/driver/domhub/card%d/pair%d/pwr", icard, ipair);
+  snprintf(target, 1024, "Card %d Pair %d power status is on.\n", icard, ipair);
+  int fp = open(buf, O_RDONLY);
+  if(fp == -1) {
+    fprintf(stderr, "Can't open file %s: %s\n", buf, strerror(errno));
+    return 1;
+  }
+  int nb = read(fp, buf, 1024);
+  if(nb<34) {
+    fprintf(stderr, "Short read of %d bytes from pwr proc file.\n", nb);
+    return 1;
+  }
+  if(strncmp(buf, target, nb)) {
+    return 1;
+  }
+  close(fp);
   return 0;
 }
