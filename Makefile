@@ -30,6 +30,7 @@ install:
 	install stagedtests.pl $(INSTALL_BIN)
 	install se.pl          $(INSTALL_BIN)
 	install sb.pl          $(INSTALL_BIN)
+	install anamoat        $(INSTALL_BIN)
 
 clean:
 	rm -f *~ readwrite dtest tcaltest dtest readgps rndpkt
