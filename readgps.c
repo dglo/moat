@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -21,17 +22,21 @@
 #include <unistd.h>
 #include <signal.h>
 
-#define TSBUFLEN 22
-#define SOH 1
-#define COL ':'
-#define QUALPOS 13
+#define TSBUFLEN  22
+#define MAXPROC   80
+#define MAXCARD    7
+#define SOH        1
+#define COL      ':'
+#define QUALPOS   13
 #define MAXRETRIES 3
 
 int usage(void) {
   fprintf(stderr,
 	  "Usage: readgps <card_proc_file>\n"
+	  "       readgps <card>\n"
 	  "Options:  -d       Show difference in DOR clock ticks\n"
 	  "          -o       One-shot (single readout)\n"
+	  "          -w <n>   Wait n seconds between readout cycles\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -40,17 +45,53 @@ int usage(void) {
 static int die=0;
 void argghhhh() { die=1; }
 
+int isdigit_all(char *s, int max) {
+  int i;
+  int gotdigit = 0;
+  for(i=0; i<max; i++) {
+    if(s[i] == '\0') break;
+    if(! isdigit(s[i])) return 0;
+    gotdigit = 1;
+  }
+  return gotdigit;
+}
+
+
+int getcard(char *s, int max) {
+  int i        = 0;
+  int card     = 0;
+  int gotdigit = 0;
+
+  while(1) {
+    if(s[i] == '\0') break;
+    if(isdigit(s[i])) {
+      gotdigit = 1;
+      while(isdigit(s[i])) {
+	card *= 10;
+	card += s[i]-'0';
+	i++;
+      }
+      return card;
+    }
+    i++;
+  }
+  return gotdigit ? card : -1;
+}
+
 int main(int argc, char ** argv) {
   int dodiff   = 0;
   int nretries = 0;
   int oneshot  = 0;
+  int icard    = 9;
+  int waitval  = 1;
 
   while(1) {
-    char c = getopt(argc, argv, "hdo");
+    char c = getopt(argc, argv, "hdow:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
     case 'o': oneshot = 1; break;
+    case 'w': waitval = atoi(optarg); break;
     case 'h':
     default:
       exit(usage());
@@ -58,6 +99,21 @@ int main(int argc, char ** argv) {
   }
 
   if(argc == optind) exit(usage());
+
+  char pfnam[MAXPROC];
+  if(isdigit_all(argv[optind], MAXPROC)) {
+    sprintf(pfnam, "/proc/driver/domhub/card%d/syncgps", atoi(argv[optind]));
+    icard = atoi(argv[optind]);
+  } else {
+    /* We have a fully-qualified name */
+    strncpy(pfnam, argv[optind], MAXPROC);
+    icard = getcard(pfnam, MAXPROC);
+  }
+
+  if(icard < 0 || icard > MAXCARD) {
+    fprintf(stderr, "Bad card value in proc file '%s'.\n", pfnam);
+    exit(-1);
+  }
 
   char tsbuf[TSBUFLEN];
   int nr, fd;
@@ -71,7 +127,7 @@ int main(int argc, char ** argv) {
 
   while(1) {
     if(die) break;
-    fd = open(argv[optind], O_RDONLY);
+    fd = open(pfnam, O_RDONLY);
     if(fd == -1) { 
       fprintf(stderr,"Can't open file %s: %s\n", argv[optind], strerror(errno));
       fprintf(stderr,"You may need a new driver revision: try V02-02-11 or higher.\n");
@@ -80,7 +136,7 @@ int main(int argc, char ** argv) {
     nr = read(fd, tsbuf, TSBUFLEN);
     close(fd);
     if(nr == 0) {
-      sleep(1);
+      sleep(waitval);
       if(nretries++ > MAXRETRIES) {
 	fprintf(stderr,"ERROR - No GPS data available, check hardware/firmware setup.\n");
 	exit(-1);
@@ -111,7 +167,7 @@ int main(int argc, char ** argv) {
     case '?': fprintf(stdout,"('?' poor,>1ms)"); break;
     default:  fprintf(stdout," UNKNOWN!"); break;
     }
-    fprintf(stdout," DOR ");
+    fprintf(stdout," DOR(%d) ", icard);
     t = 0L;
     for(i=QUALPOS+1;i<TSBUFLEN;i++) {
       fprintf(stdout,"%02x", (unsigned char) tsbuf[i]);
