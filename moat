@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.4 2005-04-20 21:31:29 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.5 2005-04-20 23:20:37 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -13,12 +13,13 @@ use Getopt::Long;
 sub off_all; sub on_all;
 sub check_for_running_processes; sub kill_running_processes;
 
-my $relsecs  = 8 * 3600; # 8 hrs
-my $cbsecs   = 10 * 60;  # 10 min
-my $savtsecs = 0;
+my $relsecs   = 8 * 3600; # 8 hrs
+my $cbsecs    = 10 * 60;  # 10 min
+my $savtsecs  = 0;
 my $skipmjb;
 my $fixsingle;
-my $loopback = 0;
+my $loopback  = 0;
+my $skipkbchk = 0;
 
 sub usage { return <<EOF;
 Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
@@ -29,6 +30,7 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-f|-fixsingle]      Single packet length for stagedtests initial
 	                        echo test (default: random)
 	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
+	   [-S|-skipkbchk]      Skip check on minimum bandwidth
            [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
 
@@ -59,17 +61,14 @@ GetOptions("help|h"          => \$help,
 	   "exclude|e=s"     => \@exclude,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
-	   "loopback|x"      => \$loopback,
+	   "loopback|X"      => \$loopback,
+	   "skipkbchk|S"     => \$skipkbchk,
 	   "kill|k"          => \$kill,
 	   "n=i"             => \$n) || die usage;
 
 die usage if $help;
+$skipkbchk = 1 if defined $skipkbchk;
 $loopback = 1 if defined $loopback;
-if($loopback && ($cbsecs !=0 || $savtsecs !=0)) {
-    die "Tcalib operations not supported w/ loopback firmware.\n"
-	."Use -r (release) test with loopback.\n";
-}
-
 
 
 my @doms = @ARGV;
@@ -85,6 +84,11 @@ if($kill) {
 }
 
 check_for_running_processes;
+
+if($loopback && ($cbsecs !=0 || $savtsecs !=0)) {
+    die "Tcalib operations not supported w/ loopback firmware.\n"
+	."Use -r (release) test with loopback.\n";
+}
 
 while(!defined $dorfreq) {
     print "Enter clock frequency (10 or 20) in Mhz: ";
@@ -163,7 +167,8 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
 	open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -b -t $cbsecs -x -d $dorfreq $fsarg "
-	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p").($loopback?" -X ":"");
+	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p").($loopback?" -X":"")
+	    .($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -186,7 +191,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X ":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -208,7 +213,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X ":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;

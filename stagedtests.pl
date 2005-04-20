@@ -753,7 +753,7 @@ sub echo_mode_all {
 sub check_log_files {
     my $i;
     my $retval = 0;
-    if(! $skipid) {
+    if(! $skipid && ! $loopback) {
 	for($i=0; $i<$ndoms; $i++) {
 	    my $id = getdomid($i);
 	    if(defined $id) {
