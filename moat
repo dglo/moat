@@ -4,28 +4,22 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.29 2007-11-14 04:41:49 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.5 2005-04-20 23:20:37 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
 use Getopt::Long;
-use Fcntl;
 
 sub off_all; sub on_all;
 sub check_for_running_processes; sub kill_running_processes;
 
-my $relsecs    = 120; # 2 min
-my $cbsecs     = 120; # 2 min
-my $savtsecs   = 120; # 2 min
-my $domappsecs = 120; # 2 min
-my $nboot      = 0;
+my $relsecs   = 8 * 3600; # 8 hrs
+my $cbsecs    = 10 * 60;  # 10 min
+my $savtsecs  = 0;
 my $skipmjb;
-my $uppermjb;
-my $lowermjb;
 my $fixsingle;
-my $loopback;
+my $loopback  = 0;
 my $skipkbchk = 0;
-my $skipoff   = 0;
 
 sub usage { return <<EOF;
 Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
@@ -35,31 +29,17 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-g|-testgps]        Test GPS functions as part of stagedtests (10 MHz only!)
 	   [-f|-fixsingle]      Single packet length for stagedtests initial
 	                        echo test (default: random)
-	   [-X]                 Skip check on prompt for iceboot (for loopback firmware)
-	   [-i|-skipkbchk]      Skip check on minimum bandwidth
+	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
+	   [-S|-skipkbchk]      Skip check on minimum bandwidth
+           [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
-           [-w]                 Perform echotests using readwrite (default: echo-test)
+
 	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
 	                        (default $cbsecs)
-	   [-r|-relsecs]        Number of seconds for "release" stagedtests run
-	                        versus stf.sbi (default $relsecs)
+	   [-r|-relsecs]        Number of seconds for "release" stagedtests runs
+	                        (default $relsecs)
 	   [-t|-savetsecs]      Number of seconds for same, saving tcal data
 	                        (default $savtsecs)
-	   [-a|-domappsecs]     Number of seconds for "release" stagedtests runs
-	                        versus domapp.sbi (default $domappsecs)
-	   [-b <Nt>]            Perform cold reboot test on selected DOMs <Nt> times
-                                (WARNING: POWER CYCLES ALL DOMS EACH Nt TIME!!!)
-           [-o]                 Skip "off all" if cold reboot test fails
-           [-v]                 Show MOAT release version
-
-           [-s|-skipmjb]        Skip MJB test 
-	   [-u]                 Run MJB on upper DOMs only
-           [-l]                 Run MJB on lower DOMs only
-                                Either -s, -u or -l must be given, 
-                                or MJB may fail on large numbers of DOMs.
-           [-m <s>]             Set MJB duraction to <s> seconds
-           [-e]                 Run in forEground.
-
 
 EOF
 ;
@@ -69,42 +49,27 @@ my $help;
 my $dorfreq;
 my $testgps;
 my $kill;
-my $mjbsecs = 6*3600;
-my $useReadwrite = 0;
-my $n = 1;
-my $showversion;
-my $foreground;
+my $n        = 1;
+my @exclude;
 
 GetOptions("help|h"          => \$help,
 	   "skipmjb|s"       => \$skipmjb,
-	   "u"               => \$uppermjb,
-	   "l"               => \$lowermjb,
            "dorfreq|d=i"     => \$dorfreq,
 	   "relsecs|r=i"     => \$relsecs,
 	   "cbsecs|c=i"      => \$cbsecs,
 	   "testgps|g"       => \$testgps,
+	   "exclude|e=s"     => \@exclude,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
-	   "w"               => \$useReadwrite,
-	   "X"               => \$loopback,
-	   "skipkbchk|i"     => \$skipkbchk,
-	   "m=i"             => \$mjbsecs,
-	   "domappsecs|a=i"  => \$domappsecs,
+	   "loopback|X"      => \$loopback,
+	   "skipkbchk|S"     => \$skipkbchk,
 	   "kill|k"          => \$kill,
-	   "v"               => \$showversion,
-	   "o"               => \$skipoff,
-	   "b=i"             => \$nboot,
-	   "e"               => \$foreground,
 	   "n=i"             => \$n) || die usage;
 
 die usage if $help;
-
-if($showversion) {
-    print "MOAT release version ".`cat /usr/local/share/moat-version`;
-    exit;
-}
-
+$skipkbchk = 1 if defined $skipkbchk;
 $loopback = 1 if defined $loopback;
+
 
 my @doms = @ARGV;
 my $cmdline_doms = scalar @doms;
@@ -131,8 +96,13 @@ while(!defined $dorfreq) {
     last if $dorfreq == 10 || $dorfreq == 20;
 }
 
-die "GPS can only be run w/ 10MHz clock speed!\n".usage if($testgps && $dorfreq != 10);
+die usage if($testgps && $dorfreq != 10);
 my $gpsflag = $testgps ? "-g" : "";
+
+if(defined @exclude) {
+    print "Exclude not implemented yet, sorry.\n\n";
+    die usage;
+}
 
 my ($sec,$min,$hr,$mday,$mon,$yr,$wday,$yday,$isdst) = localtime;
 $yr += 1900;
@@ -160,7 +130,7 @@ sub mydie { my $m = shift; print LOG $m; die $m; }
 print "\nResults to appear in directory $testdir\n\n";
 
 open VERSION, ">$versionfile" || die "Can't open $versionfile: $!\n";
-print VERSION `/usr/local/bin/domhub-version 2>&1`;
+print VERSION `/usr/local/bin/domhub-version`;
 close VERSION;
 
 my $st_in;
@@ -176,24 +146,18 @@ if(@doms) {
 
 my $dom_list = join ' ', @doms;
 
-if(! $foreground) { 
-    exit if fork;
-}
+exit if fork;
 
 print LOG "MOAT: Started at ".(scalar localtime)."\n";
 print LOG "      CVS $id\n";
 
 my $have_failure = 0;
 
-my $moat_top = `pwd`; chomp $moat_top;
-
 for(my $iter=0; $iter<$n; $iter++) {
     print LOG "\n\nMOAT test iteration $iter...\n";
     my $iterd = sprintf("test%03d",$iter);
     mkdir $iterd || mydie "Can't mkdir $iterd: $!\n";
     chdir $iterd || mydie "Can't chdir $iterd: $!\n";
-
-    $iterd = `pwd`; chomp $iterd; # fully qualify to return here
 
     if($cbsecs > 0) {
 	#### stagedtests (echo test) of configboot 
@@ -204,212 +168,125 @@ for(my $iter=0; $iter<$n; $iter++) {
 	open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -b -t $cbsecs -x -d $dorfreq $fsarg "
 	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p").($loopback?" -X":"")
-	    .($skipkbchk?" -i":"").($useReadwrite?" -w":"");
+	    .($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir $iterd;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests/echo test with configboot firmware FAILED".
 		" on trial $iter.\n";
 	    $have_failure = 1;
-	    chdir $moat_top;
+	    chdir "..";
 	    last;
 	}
     }
 
     if($savtsecs > 0) {
-	#### stagedtests of domapp firmware, saving tcalib data
+	#### stagedtests of release firmware as above, but save tcalib data
 	my $rest = "save_tcal_stagedtests";
 	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
-	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -a -v -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"")
-	    .($useReadwrite?" -w":"")." -a";
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir $iterd;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir $moat_top;
+	    chdir "..";
 	    last;
 	}
     }
 
     if($relsecs > 0) {
-	#### stagedtests (echo test + tcaltest) of iceboot firmware
+	#### stagedtests (echo test + tcaltest) of release firmware
 	my $rest = "release_stagedtests";
 	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"")
-	    .($useReadwrite?" -w":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -S":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir $iterd;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir $moat_top;
+	    chdir "..";
 	    last;
 	}
     }
 
-    if($domappsecs > 0) {
-	#### stagedtests (echo test + tcaltest) of domapp firmware
-	my $rest = "domapp_stagedtests";
-	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
-        chdir $rest || mydie "Can't chdir $rest: $!\n";
-        unlink "st.out" || mydie "Can't unlink st.out: $!\n";
-        open ST, ">st.in"; print ST $st_in; close ST;
-	my $stcmd = "/usr/local/bin/stagedtests.pl -t $domappsecs -d $dorfreq $fsarg $gpsflag -a "
-            .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"")
-            .($useReadwrite?" -w":"");
-        print LOG "\n\nMOAT: Starting $stcmd\n";
-        system "$stcmd 2>&1 > st.out";
-        my $stresult = `tail -1 st.out`;
-        print LOG $stresult;
-	chdir $iterd;
-        if($stresult !~ /SUCCESS/) {
-            print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
-            $have_failure = 1;
-	    chdir $moat_top;
-            last;
-        }
-    }
-
-    if($nboot > 0) {
-	off_all;
-	my $crbd = "reboot_tests";
-	mkdir $crbd || mydie "Can't mkdir $crbd: $!\n";
-	chdir $crbd || mydie "Can't chdir $crbd: $!\n";
-	print LOG "\n\nMOAT: Starting cold reboot tests...\n";
-	my $bootlog = "boottests.log";
-	if(do_cold_reboot_test($nboot, $bootlog, @doms)) {
-	    print LOG "\n\nCold reboot tests FAILED.\n";
-	    $have_failure = 1;
-	    chdir $moat_top;
-	    last;
-	}
-	chdir $iterd;
-    }
-
-    if(!$skipmjb) {
-	my $wd = `pwd`; chomp $wd;
+    if(!$skipmjb && $cmdline_doms == 0) {
 	my $mjbdir = "mjb";
 	mkdir $mjbdir || mydie "Can't mkdir $mjbdir: $!\n";
 	chdir $mjbdir || mydie "Can't chdir $mjbdir: $!\n";
+	my $wdpath = `pwd`; chomp $wdpath;
+	my $mjb_results = "$wdpath/mjb_results.dat";
+	my $mjbcmd = "/usr/local/bin/run-mjb $mjb_results"; 
 	print LOG "\n\nMOAT: Starting mjb...\n";
-	my $mjb_results_dir = `pwd`; chomp $mjb_results_dir;
-	my $mjb_results = "$mjb_results_dir/mjb_results.dat";
-	my $mjb_stderr  = "$mjb_results_dir/mjb_stderr.dat";
-	off_all;
-	on_all;
-	# Make sure all requested DOMs communicate
-	my %iscom;
-	my $domarg;
-	my $have_communicating;
-	my $find_doms = ((scalar @doms)==0) ? 1 : 0;
-	foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
-	    if(`cat $pf` =~ /is communicating/) {
-		if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
-		    $iscom{"$1$2$3"} = 1;
-		    $have_communicating++;
-		    push(@doms, "$1$2$3") if $find_doms;
-		}
-	    }
-	}
-	if(!$have_communicating) {
-	    print LOG "No DOMs communicating - won't start MJB.\n";
-	    print LOG "(Pre-)MJB FAILED on iteration $iter.\n";
-	    $have_failure = 1;
-	    chdir $moat_top;
-	    last;
-	}
-	my $had_uncommunicative = 0;
-	foreach my $dom (@doms) {
-	    $dom =~ tr/[a-z]/[A-Z]/;
-	    my $card;
-	    if($dom =~ /(\d+)\d+\w+/) {
-		$card = $1;
-	    } else {
-		print LOG "Internal error, $dom not in CWD format.\n";
-		last;
-	    }
-	    if($iscom{$dom}) {
-		if($uppermjb && $card > 3) {
-		    next;
-		}
-		if($lowermjb && $card < 4) {
-		    next;
-		}
-		$domarg .= "$dom ";
-	    } else {
-		print LOG "$dom is NOT communicating!\n";
-		$had_uncommunicative++;
-		last;
-	    }
-	}
-	if($had_uncommunicative) {
-	    print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
-	    $have_failure = 1;
-	    chdir $moat_top;
-	    last;
-	}
-	chdir "/usr/local/share/domhub-testing";
-	system "echo 0 > /proc/driver/domhub/verbose";
-	if($domarg eq "") {
-	    print LOG "No communicating DOMs found in the region requested.\n";
-	    $have_failure = 1;
-            chdir $moat_top;
-	    last;
-	} 
-	my $cmd = "./mjb.sh -s $mjbsecs $domarg 2> $mjb_stderr > $mjb_results";
-        print LOG "Launching MJB: '$cmd'\n";
-	system $cmd;
-	off_all;
-	system "./results-qry.sh $mjb_results all >& $mjb_results_dir/mjb.out";
-	system "echo 1 > /proc/driver/domhub/verbose";
-	chdir $mjb_results_dir;
+	system "$mjbcmd 2>&1 > mjb.out";
 	my $mjbresult = `cat mjb.out`;
 	print LOG $mjbresult;
-	chdir $iterd;
+	chdir ".." || mydie "Can't chdir ..: $!\n";
 	if($mjbresult =~ /FAIL/) {
 	    print LOG "\n\nmjb FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir $moat_top;
+	    chdir "..";
 	    last;
 	}
     }
 
+
+#     #### Do a short newpkttest for a few minutes just to make sure
+#     #### softboot and flow control are ok
+
+#     print LOG "\n\nMOAT: Powering DOMs off, then on...\n";
+#     off_all;
+#     on_all;
+#     my $newp = "newpkt_test";
+#     mkdir $newp || mydie "Can't mkdir $newp: $!\n";
+#     chdir $newp || mydie "Can't chdir $newp: $!\n";
+#     my $newpktcmd = "/usr/local/bin/newpkttest.pl -p -n 1";
+#     print LOG "\n\nMOAT: Starting $newpktcmd\n";
+#     my $npresult = `$newpktcmd 2>&1`;
+#     print LOG $npresult;
+#     if($npresult !~ /SUCCESS/) {
+# 	print LOG "\n\nnewpkttest FAILED on iteration $iter.\n";
+# 	$have_failure = 1;
+#         last;
+#     }
+#
+#    chdir ".." || mydie "Can't chdir ..: $!\n";
+
     #### Done with tests this iteration
-    chdir $moat_top;
+    chdir ".." || mydie "Can't chdir ..: $!\n";
 
     print LOG "MOAT: Test iteration $iter succeeded.\n";
 }
 
 print LOG "MOAT: Powering off all DOMs.\n";
-off_all unless $skipoff;
+off_all;
 
 my $now = scalar localtime;
 if($have_failure) {
     print LOG "\n\n\nMOAT: Tests ended with FAILURE at $now.\n";
-    open (FAIL, ">$moat_top/FAIL") or mydie "Can't open status file $moat_top/FAIL: $!\n";
+    open FAIL, ">FAIL" || mydie "Can't open status file FAIL: $!\n";
     print FAIL " ";
     close FAIL;
 } else {
     print LOG "\n\n\nMOAT: Tests ended SUCCESSFULLY at $now.\n";
-    open (SUCC, ">$moat_top/SUCCESS") or mydie "Can't open status file $moat_top/SUCCESS: $!\n";
+    open SUCC, ">SUCCESS" || mydie "Can't open status file SUCCESS: $!\n";
     print SUCC " ";
     close SUCC;
 }
@@ -429,20 +306,13 @@ sub have_running_processes {
     my @ps = `ps --columns 1000 ax`;
     foreach my $ps(@ps) {
 	chomp $ps;
-	if($ps =~ m|\b/usr/local/bin/readwrite\b| ||
-           $ps =~ m|\b/usr/local/bin/tcaltest\b|  ||
-	   $ps =~ m|\b/usr/local/bin/echo-loop\b| ||
-	   $ps =~ m|\b/usr/local/bin/echo-test\b| ||
-	   $ps =~ m|\b\./mjb.sh\b|                ||
-           $ps =~ m|\b\./mjb-sched\b|             ||
-           $ps =~ m|\b\./echo-test\b|             ||
-           $ps =~ m|\b\./throughput\b|            ||
-           $ps =~ m|\b\./versions\b|              ||
-           $ps =~ m|\bdomterm\b|                  ||
-           $ps =~ m|\bse\b|                       ||
-	   $ps =~ m|\b/usr/local/bin/readgps\b|   ||
-	   $ps =~ m|\b/usr/local/bin/moat\b|      ||
-	   $ps =~ m|\b/usr/local/bin/stagedtests.pl\b|) {
+	if($ps =~ m|/usr/local/bin/readwrite| ||
+	   $ps =~ m|/usr/local/bin/tcaltest|  ||
+	   $ps =~ m|/usr/local/bin/run-mjb|   ||
+	   $ps =~ m|/bin/bash ./mjb.sh|       ||
+	   $ps =~ m|/usr/local/bin/readgps|   ||
+	   $ps =~ m|/usr/local/bin/moat|      ||
+	   $ps =~ m|/usr/local/bin/stagedtests.pl|) {
 	    my $pid = (split ' ', $ps)[0];
 	    if($pid != $$) {
 		print "Existing process \"$ps\"...\n";
@@ -471,151 +341,6 @@ sub kill_running_processes {
 	print "Nothing running to kill.\n";
     }
 }    
-
-sub get_communicating_doms {
-    my %iscom_hash;
-    foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
-	if(`cat $pf` =~ /is communicating/) {
-	    if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
-		$iscom_hash{"$1$2$3"} = 1;
-	    }
-	}
-    }
-    return %iscom_hash;
-}
-
-sub comstat { 
-    my $dom = shift; return "" unless $dom =~ /(\d)(\d)(\w)/;
-    my $pf = "/proc/driver/domhub/card$1/pair$2/dom$3/comstat";
-    return "proc file not found!\n" unless -e $pf;
-    return `cat $pf`;
-}
-
-sub fpga {
-    my $dom = shift; return "" unless $dom =~ /(\d)(\d)(\w)/;
-    my $pf = "/proc/driver/domhub/card$1/fpga";
-    return "proc file not found!\n" unless -e $pf;
-    return `cat $pf`;
-}
-
-sub allstats {
-    return "" unless @_;
-    my $dom = shift;
-    return comstat($dom).fpga($dom)."\n\n".allstats(@_);
-}
-
-sub card_currents {
-    my $lastcard;
-    my $s;
-    foreach my $cp (</proc/driver/domhub/card?/pair?/current>) {
-	$cp =~ m|/proc/driver/domhub/card(\d)/pair(\d)/current|;
-	my $card = $1;
-	my $pair = $2;
-	if((defined $lastcard) && $lastcard ne $card) { $s.= " mA\n"; }
-	$lastcard = $card;
-	my $curtext = `cat $cp`; chomp $curtext;
-	$curtext = $1 if $curtext =~ /current is (\S+) mA/;
-	$s .= sprintf("  $card$pair: %3s ", $curtext);
-    }
-    $s .= " mA\n";
-}
-
-sub do_cold_reboot_test {
-    my $nboot   = shift; return 1 unless defined $nboot;
-    my $bootlog = shift; return 1 unless defined $bootlog;
-    my @doms    = @_; 
-    open(BL, ">$bootlog") || mydie "Can't open $bootlog: $!\n";
-    print BL "Will do cold reboot tests ($nboot trials)...\n";
-
-    my $domarg;
-    if(@doms < 1) {
-	on_all;
-	my %hash = get_communicating_doms;
-	@doms = keys %hash;
-	off_all;
-	$domarg = "all";
-    } else {
-	$domarg = join " ", @doms;
-    }
-    print BL "Communicating DOMs: ".(join ' ', @doms)."\n";
-    foreach my $trial(0..($nboot-1)) {
-	print BL "Trial $trial...\n";
-	print BL "Currents before pwr_on:\n".card_currents;
-	on_all;
-
-	my %thistrialcomm = get_communicating_doms;
-	
-	# Open each file and start select loop
-	foreach my $dom(@doms) {
-	    if(! $thistrialcomm{$dom}) {
-		print BL "\nTrial $trial DOM $dom is NOT communicating after pwr on.\n";
-		print BL comstat($dom);
-		print BL fpga($dom);
-		print BL "Test FAILED.\n";
-		close BL;
-		off_all unless $skipoff;
-		return 1;
-	    }
-	}
-
-	print BL "Currents after power on, before configboot->iceboot:\n".card_currents;
-
-	my $secmd = "se.pl $domarg r r.+\\\?\\\>";
-	my $seresult = `$secmd 2>&1`;
-	if($seresult !~ /SUCCESS/) {
-	    print BL "\nTrial $trial transition from configboot->iceboot FAILED!\n";
-	    print BL $seresult;
-	    print BL allstats(sort @doms);
-	    print BL "Currents at time of failure:\n".card_currents;
-	    print BL "Test FAILED.\n";
-	    close BL;
-	    off_all unless $skipoff;
-	    return 1;
-	}
-
-	%thistrialcomm = get_communicating_doms;
-	# Open each file and start select loop
-	foreach my $dom(@doms) {
-	    if(! $thistrialcomm{$dom}) {
-		print BL "\nTrial $trial DOM $dom is NOT communicating after "
-		    .    "configboot->iceboot.\n";
-		print BL comstat($dom);
-		print BL fpga($dom);
-		print BL "Currents at time of failure:\n".card_currents;
-		print BL "Test FAILED.\n";
-		close BL;
-		off_all unless $skipoff;
-		return 1;
-	    }
-	}
-
-	print BL "Currents after iceboot, before reading temperature:\n".card_currents;
-
-	$secmd = "se.pl -s $domarg readTemp\\\ prtTemp "
-	    .    ".+\\\?temperature:\\\ \\\(\\\\\\S+\\\ degrees\\\)";
-        $seresult = `$secmd 2>&1`;
-	print BL "\n$seresult";
-
-	foreach my $dom(@doms) {
-	    $dom =~ /(\d)(\d)(\w)/;
-	    my $df = "/dev/dhc$1"."w$2"."d$3";
-	    if($seresult !~ /$df: OK \(\S+ degrees\)./s) {
-		print BL "\nTrial $trial temperature read FAILED ($dom / $df).\n";
-		print BL $seresult;
-		print BL allstats(sort @doms);
-		print BL "Currents at time of failure:\n".card_currents;
-		print BL "Test FAILED.\n";
-		close BL;
-		off_all unless $skipoff;
-		return 1;
-	    }
-	}
-	print BL "OK\n";
-	off_all;
-    }
-    close BL;
-    return 0;
-}
-
+	   
 __END__
 

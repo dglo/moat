@@ -1,16 +1,15 @@
 #!/usr/bin/perl
 
 #
-# John Jacobsen, NPX Designs, Inc. for LBNL/IceCube
-# 
-# Send data to multiple DOMs and look for correct response
-#
-# $Id: se.pl,v 1.6 2006-03-31 22:50:53 jacobsen Exp $
+# John Jacobsen, John Jacobsen IT Services, for LBNL/IceCube
+# $Id: se.pl,v 1.1 2005-03-14 23:56:01 jacobsen Exp $
 
 use Fcntl;
 use strict;
 use IO::Select;
-use Getopt::Long;
+
+sub drain;
+
 
 my @domdevs;
 my %cardof;
@@ -18,19 +17,12 @@ my %pairof;
 my %domof;
 my %nameof;
 my %fhof;
-my $suppress;
-my $help;
+
 sub usage { return <<EOF;
-Usage: $0 [-s] <dom|all> [dom] ... <sendpat> <expectpat>
+Usage: $0 <dom|all> [dom] ... <sendpat> <expectpat>
        dom is in the form 00a, 00A or /dev/dhc0w0dA
-       -s: suppress all but matching pattern output
 EOF
 ;}
-
-GetOptions("help|h"    => \$help,
-	   "s"         => \$suppress) || die usage;
-
-die usage if $help;
 
 my $recvpat = pop @ARGV; die usage unless defined $recvpat;
 my $sendpat = pop @ARGV; die usage unless defined $sendpat;
@@ -75,6 +67,7 @@ if($ARGV[0] eq "all") {
 
 die "No DOMs specified!\n".usage unless @domdevs > 0;
 
+
 $sendpat = "$sendpat\r";
 
 my $buf;
@@ -83,19 +76,14 @@ $|++;
 
 my $selector = IO::Select->new();
 
-my %openfail;
-
 my $max_write_retries = 100;
 foreach my $domdev (@domdevs) {
     # print "$domdev\n";
     die "Couldn't find DOM device file $domdev" unless -e $domdev;
 
     my $dd = anfh; # Anonymous filehandle
-    if(!sysopen($dd, $domdev, O_RDWR)) {
-	warn "WARNING: open failed on $domdev!\n";
-	$openfail{$domdev} = 1;
-	next;
-    } 
+    sysopen($dd, $domdev, O_RDWR)
+	|| die "Can't open $domdev: $!\n";
 
     $selector->add($dd);
     my $towrite = length($sendpat);
@@ -118,7 +106,7 @@ my %reply;
 my @ready;
 my %dataread;
 my %datadone;
-my $todo = @domdevs - scalar keys %openfail;;
+my $todo = @domdevs;
 
 my $now = time;
 while(abs(time - $now) < 10) {
@@ -132,14 +120,10 @@ while(abs(time - $now) < 10) {
 	    my $printable = $buf;
 	    $printable =~ s/\r/\\r/g;
 	    $printable =~ s/\n/\\n/g;
-	    print $printable unless $suppress;
+	    print $printable;
 	    $dataread{$fname} .= $printable;
 	    if($dataread{$fname} =~ /$recvpat/) {
-		if(defined $1) {
-		    print " $fname: OK ($1).\n";
-		} else {
-		    print " $fname: OK.\n";
-		}
+		print " $fname: OK\n";
 		$selector->remove($fh);
 		$datadone{$fname} = 1;
 		$todo--;
@@ -152,24 +136,63 @@ while(abs(time - $now) < 10) {
 # Close each
 foreach my $domdev (@domdevs) {
     # print "Close $domdev: ";
-    close $fhof{$domdev} unless $openfail{$domdev};;
+    close $fhof{$domdev};
 }
 
-if($todo == 0 && (keys %openfail) == 0) {
+if($todo == 0) {
     print "SUCCESS.\n";
 } else {
-    print "FAILURE:\n";
+    print "FAILURE: $todo DOMs did not give expected reply:\n";
     foreach my $fname(@domdevs) {
-	if($openfail{$fname}) {
-	    print "\t$fname failed to open.\n";
-	} elsif(! $datadone{$fname}) {
-	    if($dataread{$fname} eq "") {
-		print "\t$fname got NO DATA.\n"; 
-	    } else {
-		print "\t$fname (got $dataread{$fname})\n";
-	    }
+	if(! $datadone{$fname}) { 
+	    print "\t$fname (got $dataread{$fname})\n";
 	}
     }
+}
+
+exit;
+
+sub drain {
+    my $expect = shift;
+    my $maxexpect = 1000;
+    my $gotsomething = 0;
+    my $dataread = "";
+
+    if(defined $expect) {
+	for(1..$maxexpect) {
+	    my $read = sysread DD, $buf, 4096;
+	    if($read > 0) {
+		my $printable = $buf; 
+		$printable =~ s/\r/\\r/g;
+		$printable =~ s/\n/\\n/g;
+		print "$printable";
+		$dataread .= $buf;
+		return 0 if $dataread =~ /$expect/;
+	    } else {
+		select undef,undef,undef,0.1;
+	    }
+	}
+	return 1; # didn't get it
+    }
+
+    # default case:
+    for(1..10) {
+	my $read = sysread DD, $buf, 4096;
+	if($read > 0) {
+	    my $printable = $buf; 
+	    $printable =~ s/\r/\\r/g;
+	    $printable =~ s/\n/\\n/g;
+	    print "$printable";
+	    $gotsomething++;
+	    $dataread .= $buf;
+	}
+	select undef,undef,undef,0.001;
+    }
+    if($dataread =~ /error/i) {
+	print "Error present on stream from DOM.\n";
+	return 1;
+    }
+    return 0;
 }
 
 

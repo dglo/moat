@@ -1,7 +1,7 @@
 /* readwrite.c
    John Jacobsen, jacobsen@npxdesigns.com, for LBNL/IceCube
    Started March, 2003
-   $Id: readwrite.c,v 1.3 2005-10-28 20:33:49 jacobsen Exp $
+   $Id: readwrite.c,v 1.1 2005-03-14 23:25:41 jacobsen Exp $
 
    Loopback test program for the DOR/DOM - 
    Send messages to DOM and get contents back; check to make
@@ -47,21 +47,19 @@ static unsigned char rxbuf[NMSGBUF][MAX_MSG_BYTES];
 int usage(void) {
   fprintf(stderr, 
 	  "Usage:\n"
-	  "  readwrite HUB [options] <devfile> [num_messages] "
-	  "[inter_message_delay] [open_delay]\n");
-  fprintf(stderr, "  HUB needed for backwards compatibility with scripts.\n");
+	  "  readwrite <HUB|DOM> <devfile> [num_messages] [inter_message_delay] [open_delay]\n");
+  fprintf(stderr, "  HUB means act as DOMHub (send-and-receive)\n");
+  fprintf(stderr, "  DOM means act as DOM (receive-and-echo-back)\n");
   fprintf(stderr, "  <devfile> is in the form 00a, 00A, or /dev/dhc0w0dA\n\n");
   fprintf(stderr, 
-	  "  Options: [-s] Stuffing mode (stuff as many messages as possible into TX FIFO)\n"
+	  "  Options: [-s] Stuffing mode (stuff as many packets as possible into TX FIFO)\n"
 	  "           [-d <msec>] delay <msec> before each write\n"
 	  "           [-r <msec>] delay <msec> after last write returns -1 (TX full)\n"
 	  "           [-f] Test maximal flow-control (keep send buffer full at all times)\n"
 	  "           [-i] Use incremental test pattern data (1111222233334444....)\n"
-	  "           [-m <maxpkt>] max message length, up to MB, below.\n"
-	  "           [-p <pktlen>] pktlen between 1 and MB bytes, else random message length.\n"
+	  "           [-m <maxpkt>] max packet length, up to MB, below.\n"
+	  "           [-p <pktlen>] pktlen between 1 and MB bytes, else random packet length.\n"
 	  "           [-k KB] require average bandwidth >= <KB> kilobytes/sec.\n"
-	  "           [-e] put DOM in echo-mode first.\n"
-	  "           [-w] wait for up to 1 second while draining stale messages"
 	  "           MB == /proc/driver/domhub/bufsiz\n\n");
   return 0;
 }
@@ -70,15 +68,15 @@ int is_printable(char c) { return (c >= 32 && c <= 126); }
 
 int getBufSize(char *procFile);
 int getDevFile(char *filename, int len, char *arg);
-void show_buffers_hex(unsigned char *rxbuf, unsigned char *txbuf, int nrx, int ntx);
+void show_buffers_hex(unsigned char *rxbuf, unsigned char *txbuf, int n);
+void wigsleep(void);
 void randsleep(int usec);
 void show_fpga(int icard);
 void init_buffers(unsigned char *txbuf, unsigned char *rxbuf, int len);
 void init_tx_buf(unsigned char *txbuf, int len, int incformat);
 int perd(int icount);
 void showcomstat(char * f);
-int set_echo_mode(int filep, int bufsiz, float waitval);
-int drain_stale_messages(int filep, int bufsiz, int dowait, float waitval);
+
 
 int main(int argc, char *argv[]) {
   int nread, gotreply, write_ok;
@@ -103,22 +101,36 @@ int main(int argc, char *argv[]) {
   int readtimeouts    = 0;
   int read_retries    = 0;
   int verbose         = 0;
-  int dowait          = 0;
   long read_try_sum   = 0;
+  int option_index    = 0;
   int check_data      = 1; /* Set to zero to kludge-supress the checking of RX pkt */
-  int stuff = 0; /* If 1, stuff messages into driver/TX FIFO as fast as possible */
+  int stuff = 0; /* If 1, stuff packets into driver/TX FIFO as fast as possible */
   int icard, ipair, idom;
   char cdom;
   int fixpkt=0, pktlen;
+  int wig=0;
   int mdelay=0;
   int maxpkt;
   int flowctrl  = 0;
   int rdelay    = 0;
   int incformat = 0;
-  int dosetecho = 0;
   struct pollfd  pfd;
   struct timeval tstart, tlatest;
   float deltasec;
+  static struct option long_options[] =
+    {
+      {"pktlen", 0, 0, 0},
+      {"maxpkt", 0, 0, 0},
+      {"flowctrl", 0, 0, 0},
+      {"wig", 0, 0, 0},
+      {"help", 0, 0, 0},
+      {"rdelay", 0, 0, 0},
+      {"stuff", 0, 0, 0},
+      {"delay", 0, 0, 0}, 
+      {"incformat", 0, 0, 0}, 
+      {"verbose", 0, 0, 0},
+      {0, 0, 0, 0}
+    };
 
   /************* Process command arguments ******************/
 
@@ -126,7 +138,8 @@ int main(int argc, char *argv[]) {
   maxpkt = bufsiz;
 
   while(1) {
-    char c = getopt(argc, argv, "hsvwifed:m:r:p:k:");
+    char c = getopt_long (argc, argv, "hsvwifd:m:r:p:k:",
+			  long_options, &option_index);
     if (c == -1) break;
 
     switch(c) {
@@ -134,14 +147,13 @@ int main(int argc, char *argv[]) {
       fixpkt = 1;
       pktlen = atoi(optarg);
       if(pktlen < 1 || pktlen > bufsiz) exit(usage());
-      fprintf(stderr,"Will use fixed messages of length %d.\n", pktlen);
+      fprintf(stderr,"Will use fixed packets of length %d.\n", pktlen);
       break;
-    case 'w': dowait    = 1; break;
+    case 'w': wig       = 1; break;
     case 'v': verbose   = 1; break;
     case 's': stuff     = 1; break;
     case 'i': incformat = 1; break;
     case 'f': flowctrl  = 1; break;
-    case 'e': dosetecho = 1; break;
     case 'k': dokb = 1; kbmin = atoi(optarg); break;
     case 'm': maxpkt    = atoi(optarg); break;
     case 'd': mdelay    = atoi(optarg); break;
@@ -153,24 +165,39 @@ int main(int argc, char *argv[]) {
 
   /* Initialize random generator for delays */
   int pid = (int) getpid();
+  pprintf("Pid is %d.\n", pid);
   srand(pid);
 
   int argcount = argc-optind;
 
-  if(argcount < 2) exit(usage());
+  if(argcount < 2) {
+    fprintf(stderr, "Need file name argument!\n");
+    usage();
+    exit(-1);
+  }
 
   if(argcount < 3 || (nummsgs = atol(argv[optind+2])) < 0) {
     nummsgs = NUMMSGS_DEFAULT;
   }
 
-  if(nummsgs < 0) exit(usage());
+  //printf("nummsgs %ld\n", nummsgs);
+
+  if(nummsgs == 0) exit(usage());
 
   msgdelay = 0;
   opendelay = 0;
-  mode = HUB;
 
-  if(strncmp(argv[optind], "HUB", 3)) exit(usage()); /* Keep compatibility w/ scripts */
-
+  if(!strncmp(argv[optind], "DOM", 3)) {
+    mode = DOM;
+    fprintf(stderr, "DOM mode not yet supported.\n");
+    exit(-1);
+  } else if(!strncmp(argv[optind], "HUB", 3)) {
+    mode = HUB;
+  } else {
+    fprintf(stderr, "Need HUB or DOM mode.\n");
+    usage();
+    exit(-1);
+  }
 
 # define BSIZ 512
   char filename[BSIZ];
@@ -185,9 +212,11 @@ int main(int argc, char *argv[]) {
     perror(":");
     exit(errno);
   }
+  if(wig) usleep(5000000);
 
   sscanf(filename,"/dev/dhc%dw%dd%c", &icard, &ipair, &cdom);
   idom = (cdom == 'A' ? 0 : 1);
+  pprintf("Card %d pair %d dom %d.\n", icard, ipair, idom);
 
   char comstat[BSIZ];
   snprintf(comstat, BSIZ, "/proc/driver/domhub/card%d/pair%d/dom%c/comstat", icard, ipair, cdom);
@@ -196,26 +225,34 @@ int main(int argc, char *argv[]) {
 
   totmb   = 0.0;
   int firstmsg = 1;
+   
+  // HUB mode only:
 
-  // Try to drain old messages first, up to 1 sec.:
-
-  float waitval = 3.0;
-
-  if(drain_stale_messages(filep, bufsiz, dowait, waitval)) exit(-1);
-
-  if(dosetecho) 
-    if(set_echo_mode(filep, bufsiz, waitval)) exit(-1);
-
+  // Try to drain old messages first:
+  int itrial=0;
+  int maxtrials=100;
+  
   pfd.events = POLLIN;
   pfd.fd     = filep;
-  gettimeofday(&tstart, NULL);
+
+  while(poll(&pfd, 1, 0)) {
+    if(!(pfd.revents & POLLIN)) fprintf(stderr,"BAD POLL\n");
+    nread = read(filep, rxbuf[0], bufsiz);
+    if(nread <= 0) { 
+      itrial++;
+    } else {
+      printf("Drained %d byte message before running test...\n", nread);
+    }
+    if(itrial > maxtrials) break;
+    usleep(1000);
+  }
 
   last_written = nbyteswritten = 0;
   int last_read = 0;
   if(stuff) {
     long itxpkt = 0;
     long irxpkt = 0;
-    gettimeofday(&tstart, NULL); /* Reset time */
+    gettimeofday(&tstart, NULL);
     while(1) {
       /* Write as many records to FIFO as possible */
       if(itxpkt < nummsgs) {
@@ -235,6 +272,7 @@ int main(int argc, char *argv[]) {
             break;       /* Do read cycle */
 	  }
 	  if(!(pfd.revents & POLLOUT)) fprintf(stderr,"POLL ERROR\n");
+
 	  nbyteswritten = write(filep,txbuf[itxpkt%NMSGBUF], pktlengths[itxpkt%NMSGBUF]);
 
 	  if(nbyteswritten <= 0) { 
@@ -260,8 +298,10 @@ int main(int argc, char *argv[]) {
       errno = 0;
       //fprintf(stderr,"%s: Trying read...\n", filename);
       while(1) {
+	if(wig) wigsleep();
 	pfd.events = POLLIN;
-       	if(!poll(&pfd, 1, 0)) {
+	
+	if(!poll(&pfd, 1, 0)) {
 	  read_retries++;
 	  if(read_retries > MAX_READ_RETRIES) {
 	    fprintf(stderr, "%s: Timeout (> %d retries) on read.\n", filename,
@@ -293,13 +333,13 @@ int main(int argc, char *argv[]) {
 	  showcomstat(comstat);
 	  exit(-1);
 	} else { 
-	  /* Check message contents */
+
+	  /* Check packet contents */
 	  if(nread != pktlengths[irxpkt%NMSGBUF]) {
-	    fprintf(stderr, "%s: Message length mismatch (TXed %ld msgs, RXed %ld).  "
+	    fprintf(stderr, "%s: Packet length mismatch (TXed %ld pkts, RXed %ld).  "
 		    "Wanted %d bytes, got %d.\n",
 		    filename, itxpkt, irxpkt, pktlengths[irxpkt%NMSGBUF], nread);
-	    show_buffers_hex(rxbuf[irxpkt%NMSGBUF], txbuf[irxpkt%NMSGBUF], nread,
-			     pktlengths[irxpkt%NMSGBUF]);
+	    //show_buffers_hex(rxbuf[irxpkt%NMSGBUF], txbuf[irxpkt%NMSGBUF], nread);
 	    exit(-1);
 	  }
 	  int mismatches = 0;
@@ -348,7 +388,7 @@ int main(int argc, char *argv[]) {
 	  gettimeofday(&tlatest, NULL);
 	  deltasec = (tlatest.tv_sec - tstart.tv_sec) + 1.E-6*(tlatest.tv_usec - tstart.tv_usec);
 	  kbps = (((float) totbytes)/1000.) / deltasec;
-	  if (dokb && (deltasec > MIN_DT_BEFORE_KBCHECK) && (kbps < (double) kbmin)) {
+	  if(deltasec > MIN_DT_BEFORE_KBCHECK && kbps < (double) kbmin) {
 	    fprintf(stderr, "%s: Data rate (%2.2f kB/s) dropped below minimum (%d kB/s)!\n",
 		    filename, kbps, kbmin);
 	    close(filep);
@@ -373,10 +413,7 @@ int main(int argc, char *argv[]) {
 	    //fprintf(stderr, "%s: Data rate of %2.6lf kB/sec.\n", filename, kbps);
 	    //fprintf(stderr, "%s: Got %ld messages.\n", filename, nummsgs);
 	  }
-	  if(msgs_ok >= nummsgs) {
-	    fprintf(stderr, "%s: SUCCESS.\n", filename);
-	    exit(0);
-	  }
+	  if(msgs_ok >= nummsgs) exit(0);
 	  if(flowctrl) break; /* Do one read only before stuffing write */
 	}
       } 
@@ -397,7 +434,7 @@ int main(int argc, char *argv[]) {
       //pktlengths[ipkt] = 1+(int)(((float) 4)*rand()/(RAND_MAX+1.0));
       //pktlengths[ipkt] = 108;
       //pktlengths[ipkt] = 1;
-      //printf("%s: %d byte message.\n", filename, pktlengths[ipkt]);
+      //printf("%s: %d byte packet.\n", filename, pktlengths[ipkt]);
 
     }
 
@@ -449,12 +486,12 @@ int main(int argc, char *argv[]) {
 	  randsleep(READ_DELAY);
 	  continue;
 	} else if(errno == EIO) {
-	  fprintf(stderr, "%s: Hardware timeout after %ld successful messages.\n",
+	  fprintf(stderr, "%s: Hardware timeout after %ld successful packets.\n",
                   filename,  msgs_ok);
 	  show_fpga(icard);
 	  exit(-1);
 	} else {
-	  fprintf(stderr, "%s: Unknown error (%d %s) after %ld successful messages.\n",
+	  fprintf(stderr, "%s: Unknown error (%d %s) after %ld successful packets.\n",
                   filename, errno, strerror(errno), msgs_ok);
 	  exit(-1);
 	}
@@ -463,11 +500,11 @@ int main(int argc, char *argv[]) {
 		filename, nread);
 	exit(-1);
       } else if(nread != nbyteswritten) {
-	fprintf(stderr, "%s: Read/write mismatch after %ld successful messages: "
+	fprintf(stderr, "%s: Read/write mismatch after %ld successful packets: "
 		"wrote %d, read %d bytes.\n",
 		filename, msgs_ok,
 		nbyteswritten, nread);
-	show_buffers_hex(rxbuf[ipkt], txbuf[ipkt], nread, nbyteswritten);
+	show_buffers_hex(rxbuf[ipkt], txbuf[ipkt], nread);
 	exit(-1);
       } else {
 	gotreply = 1;
@@ -485,14 +522,14 @@ int main(int argc, char *argv[]) {
 		    msgs_ok,
 		    filename,
 		    i);
-	    show_buffers_hex(rxbuf[ipkt], txbuf[ipkt], nread, nbyteswritten);
+	    show_buffers_hex(rxbuf[ipkt], txbuf[ipkt], nread);
 	    exit(-1);
 	  }
 	}
 	//fprintf(stderr,"\n");
 	
       } else {
-	fprintf(stderr, "%s: Timeout after %ld successful messages "
+	fprintf(stderr, "%s: Timeout after %ld successful packets "
 		"expecting %d byte reply from DOM (%d retries).  Exiting.\n", 
 		filename, msgs_ok, nbyteswritten, MAX_READ_RETRIES);
 	fprintf(stderr, "\n\n");
@@ -512,7 +549,7 @@ int main(int argc, char *argv[]) {
     deltasec = (tlatest.tv_sec - tstart.tv_sec) + 1.E-6*(tlatest.tv_usec - tstart.tv_usec);
     //fprintf(stderr,"delt %ld deltasec %2.6lf.\n", delt, deltasec);
     kbps = (((float) totbytes)/1000.) / deltasec;
-    if (dokb && (deltasec > MIN_DT_BEFORE_KBCHECK) && (kbps < (double) kbmin)) {
+    if(deltasec > MIN_DT_BEFORE_KBCHECK && kbps < (double) kbmin) {
       fprintf(stderr, "%s: Data rate (%2.2f kB/s) dropped below minimum (%d kB/s)!\n",
 	      filename, kbps, kbmin);
       close(filep);
@@ -546,8 +583,7 @@ int main(int argc, char *argv[]) {
 	  length_errors, contents_errors, readtimeouts);
   fprintf(stderr,"\nClosing file.\n");
   close(filep);
-  fprintf(stderr, "SUCCESS\n");
-  fprintf(stderr, "Done.\n");
+  fprintf(stderr,"Done.\n");
   
   return 0;
 }
@@ -589,48 +625,31 @@ int getDevFile(char * filename, int len, char *arg) {
   return 0;
 }
 
-void show_buffers_hex(unsigned char *rxbuf, unsigned char *txbuf, int nrx, int ntx) {
+void show_buffers_hex(unsigned char *rxbuf, unsigned char *txbuf, int n) {
   /* Show TX and RX buffers -- used when mismatch occurs */
-  int nmax = nrx; if(nmax < ntx) nmax = ntx;
-  int cpr  = 8;
-  int nrows = (nmax+cpr-1)/cpr;
-  int itx=0, irx=0;
-  int irow;
-  int ich;
-  for(irow=0; irow<nrows; irow++) {
-    fprintf(stderr, "%04d ", itx);
-    for(ich=0; ich < cpr; ich++) {
-      if(itx+ich < ntx) { 
-	fprintf(stderr, "%02x ", txbuf[itx+ich]);
-      } else {
-	fprintf(stderr, "   ");
-      }
-    }
-    itx += cpr;
-    fprintf(stderr, "... ");
-    for(ich=0; ich < cpr; ich++) {
-      if(irx+ich < nrx) {
-	fprintf(stderr, "%02x", rxbuf[irx+ich]);
-      } else {
-        fprintf(stderr, "  ");
-      }
-      if(irx+ich < nrx && irx+ich < ntx && rxbuf[irx+ich] != txbuf[irx+ich]) {
-	fprintf(stderr, "*");
-      } else {
-	fprintf(stderr, " ");
-      }
-    }
-    fprintf(stderr, " ... ");
-    for(ich=0; ich < cpr; ich++) {
-      if(irx+ich < nrx) {
-	char c = rxbuf[irx+ich];
-        fprintf(stderr, "%c", is_printable(c)?c:'.');
-      }
-    }
+  int i;
+  fprintf(stderr,"TX Buffer:\n");
+  for(i=0; i<n; i++) {
+    fprintf(stderr, "%02x ", txbuf[i]);
+    if(!((i+1)%20)) fprintf(stderr,"\n");
+  }
+  fprintf(stderr,"\n");
 
-    irx += cpr;
-    
-    fprintf(stderr, "\n");
+  for(i=0; i<n; i++) {
+    if(txbuf[i] != rxbuf[i]) {
+      fprintf(stderr, "Position %d: txbuf is 0x%02x, rxbuf is 0x%02x.\n",
+	      i, txbuf[i], rxbuf[i]);
+    }
+  }
+}
+
+void wigsleep(void) {
+#define WIGPROB 5000
+#define WIGSEC  9
+  if( (WIGPROB * (rand()/(RAND_MAX+1.0))) < 2) {
+    int wigdelay = 1000000 * WIGSEC;
+    printf("Wigging for %d usec...\n", wigdelay);
+    usleep(wigdelay);
   }
 }
 
@@ -691,68 +710,4 @@ void showcomstat(char * f) { /* Dump comstat proc file */
   int n = read(fp, buf, BIGBUF);
   write(2, buf, n);
   close(fp);
-}
-
-int set_echo_mode(int filep, int bufsiz, float waitval) {
-  char txbuf[] = "echo-mode\r";
-  int  nb      = strlen(txbuf);
-  int  nw = write(filep, txbuf, nb);
-  if(nw != nb) {
-    fprintf(stderr, "Couldn't set echo mode, write failed.\n");
-    return 1;
-  }
-  drain_stale_messages(filep, bufsiz, 1, waitval);
-  return 0;
-}
-
-void showmsg(const char * rbuf, int nread) {
-  int i;
-  for(i=0;i<nread;i++) {
-    fprintf(stderr,"%c", is_printable(rbuf[i])?rbuf[i]:'.');
-    if(!((i+1)%80)) fprintf(stderr,"\n");
-  }
-  fprintf(stderr,"\n");
-}
-
-int drain_stale_messages(int filep, int bufsiz, int dowait, float waitval) {
-  char * rbuf = malloc(MAX_MSG_BYTES);
-  if(rbuf == NULL) {
-    fprintf(stderr, "Warning: malloc failed!\n");
-    return 1;
-  }
-  int itrial=0;
-  int maxtrials=1000;
-  struct pollfd  pfd;
-  struct timeval tstart, tlatest;
-  pfd.events = POLLIN;
-  pfd.fd     = filep;
-  gettimeofday(&tstart, NULL);
-  int draindone = 0;
-  do {
-    while(poll(&pfd, 1, 10)) {
-      if(!(pfd.revents & POLLIN)) fprintf(stderr,"BAD POLL\n");
-      int nread = read(filep, rbuf, bufsiz);
-      if(nread == -1) { 
-	fprintf(stderr, "Warning: POLLIN but no data!\n");
-	draindone = 1;
-	break;
-      } else {
-	fprintf(stderr,"Drained %d byte message before starting echo test...\n", nread);
-	showmsg(rbuf, nread);
-      }
-      if(itrial > maxtrials) { 
-	draindone = 1;
-	break;
-      }
-    }
-    usleep(1000);
-    gettimeofday(&tlatest, NULL);
-    float deltasec = (tlatest.tv_sec - tstart.tv_sec) + 1.E-6*(tlatest.tv_usec - tstart.tv_usec);
-    if(deltasec > waitval) {
-      draindone = 1;
-      break;
-    }
-  } while (dowait && !draindone);
-  free(rbuf);
-  return 0;
 }

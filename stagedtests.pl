@@ -11,16 +11,10 @@ use constant CTRL_L      => 12;
 use constant FALLTHRU_OK =>  1;
 use constant NOFALLTHRU  =>  2;
 
+sub get_interrupts;
 sub show_comm_stats;
-my $bindir   = "/usr/local/bin";
-my $procdir  = "/proc/driver/domhub";
-my $echotest = "/usr/local/share/domhub-testing/echo-test";
-my $echoloop = "/usr/local/bin/echo-loop";
-die "$0: echo test program $echotest not installed, need domhub-tools RPM.\n"
-    unless -x $echotest;
-die "$0: echo loop program $echoloop not found!\n" unless -x $echoloop;
-
-select STDOUT; $|=1;
+my $bindir  = "/usr/local/bin";
+my $procdir = "/proc/driver/domhub";
 
 my $nmsgs         = 400000000;
 my $ntcals        = 400000000;
@@ -33,7 +27,6 @@ my $fixsinglepkt;
 my $help          = 0;
 my $dorfreq;
 my $useconfigboot = 0;
-my $usedomapp     = 0;
 my $timedrun;
 my $probe         = 0;
 my $savetcal      = 0;
@@ -44,8 +37,7 @@ my $require_kbmin = 40; # Require this many kB/sec during readwrite
 my $checkgps      = 0;
 my $gpsskip       = 15;
 my $gpsticks      = 20000000;
-my $useReadwrite  = 0;
-my $loopback;
+my $loopback      = 0;
 sub usage { return <<EOF;
 
 Usage: $0 [st.in]
@@ -62,13 +54,13 @@ Usage: $0 [st.in]
 	  [-p|-probe]          "Probe" for DOMs on power up rather than use st.in.
 	  [-v|-savetcal]       Save time calibration data for each channel
 	  [-f|-fixsinglepkt <n>] Fix first single pkt length to <n> bytes
-	  [-i|-skipkbcheck]    Allow slow connection / skip bandwidth min. check
-	  [-w]                 Use readwrite instead of default [echo-test]
-	  [-o|-loopback]       Tweaks to support loopback mode firmware:
+	  [-S|-skipkbcheck]    Allow slow connection / skip bandwidth min. check
+	  [-X|-loopback]       Tweaks to support loopback mode firmware:
 	                         - don't wait for ">" from iceboot
                                  - don't softboot DOMs
-	  [-b|-useconfigboot]  Use configboot firmware for echo test
-	  [-a|-usedomapp]      Use domapp firmware for echo test
+	  [-b|-useconfigboot]  Use echo-mode-cb rather than echo-mode; 
+                               this selects configboot firmware for echo test
+                               (if supported by your DOM software release)
 st.in should be a file formatted e.g. as:
 0 0 A
 0 0 B
@@ -103,11 +95,9 @@ GetOptions("help|h"          => \$help,
 	   "fixsinglepkt|f=i"=> \$fixsinglepkt,
 	   "probe|p"         => \$probe,
 	   "savetcal|v"      => \$savetcal,
-	   "w"               => \$useReadwrite,
 	   "useconfigboot|b" => \$useconfigboot,
-	   "usedomapp|a"     => \$usedomapp,
-	   "skipkbcheck|i"   => \$skipkbchk,
-	   "loopback|o"      => \$loopback,
+	   "skipkbcheck|S"   => \$skipkbchk,
+	   "loopback|X"      => \$loopback,
 	   "skiptcal|x"      => \$skiptcal) || die usage;
 
 $loopback=1 if defined $loopback;
@@ -205,7 +195,7 @@ if($probe) {
 	   next;
        }
 	if($str !~ /(\d+) (\d+) (A|B)/) {
-	    print "Bad DOM specifier in $inputfile: '$str'\n";
+	    print "Bad DOM specifier in $inputfile: $!\n";
 	    exit;
 	} else {
 	    $card{$i} = $1;
@@ -284,32 +274,17 @@ for($i=0; $i<$ndoms; $i++) {
 dochoice("[e]cho-test individual channels (1 msg)", 'e', FALLTHRU_OK, sub {
     for($i=0; $i<$ndoms; $i++) {
 	# print `cat /proc/driver/domhub/card$card{$i}/pair$pair{$i}/dom$dom{$i}/comstat`;
-	if($useReadwrite) {
-	    my $echocmd = "$bindir/readwrite HUB $fixsinglepktarg $devfiles{$i} 1 2>&1";
-	    print "$echocmd\n";
-	    my $echoresult = `$echocmd`; 
-	    if($echoresult =~ /Closing file.\nDone.$/m) {
-		print "$devfiles{$i} passes single-message echo test.\n\n";
-	    } else {
-		print "$devfiles{$i} failed single-message echo test:\n$echoresult\n";
-		print "comstat: \n";
-		print `cat /proc/driver/domhub/card$card{$i}/pair$pair{$i}/dom$dom{$i}/comstat`;
-		die "$devfiles{$i} failed single-message echo test.\n";
-	    }	
+	my $echocmd = "$bindir/readwrite HUB $fixsinglepktarg $devfiles{$i} 1 2>&1";
+	print "$echocmd\n";
+	my $echoresult = `$echocmd`;
+	if($echoresult =~ /Closing file.\nDone.$/m) {
+	    print "$devfiles{$i} passes single-message echo test.\n\n";
 	} else {
-	    my $echocmd = "$echotest -n 1 $card{$i}$pair{$i}$dom{$i} 2>&1";
-	    print "$echocmd\n";
-	    my $echoresult = `$echocmd`; chomp $echoresult;
-	    # 00A 5852 0.067855 0
-	    if($echoresult =~ /$card{$i}$pair{$i}$dom{$i}\s+\d+\s+\S+\s+\d+/) {
-		print "$devfiles{$i} passes single-message echo test ($echoresult).\n\n";
-	    } else {
-		print "$devfiles{$i} failed single-message echo test:\n$echoresult\n";
-                print "comstat: \n";
-                print `cat /proc/driver/domhub/card$card{$i}/pair$pair{$i}/dom$dom{$i}/comstat`;
-                die "$devfiles{$i} failed single-message echo test.\n";
-	    }
-	}
+	    print "$devfiles{$i} failed single-message echo test:\n$echoresult\n";
+	    print "comstat: \n";
+	    print `cat /proc/driver/domhub/card$card{$i}/pair$pair{$i}/dom$dom{$i}/comstat`;
+	    die "$devfiles{$i} failed single-message echo test.\n";
+	}	
     }
 });
 
@@ -319,8 +294,7 @@ dochoice("Do single [t]ime calib on each channel", 't', FALLTHRU_OK, sub {
 	if($tcalresult !~ /FAILED/) {
 	    print "$tprocfiles{$i} PASSED.\n";
 	} else {
-	    print "$tprocfiles{$i} FAILED!  Session text:\n$tcalresult\n\n";
-	    exit(-1);
+	    die "$tprocfiles{$i} FAILED!  Session text:\n$tcalresult\n\n";
 	}
     }
 }) unless $skiptcal;
@@ -328,7 +302,6 @@ dochoice("Do single [t]ime calib on each channel", 't', FALLTHRU_OK, sub {
 my $longjobs = 0;
 my $ifgps = $testgps? "/GPS readout" : "";
 dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
-    my @domlist;
     for($i=0; $i<$ndoms; $i++) {
 	my $echoout = "echo_results_c$card{$i}"."w$pair{$i}"."d$dom{$i}.out";
 	my $tcalout;
@@ -339,38 +312,27 @@ dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
 	} else {
 	    $tcaldata = "/dev/null";
 	}
-
-	if($useReadwrite && $nmsgs > 0) { # Single process for each DOM
-	    my $rwcmd = "$bindir/readwrite HUB $kbchkarg $devfiles{$i} ".($stuffmode?"-s":"")
-		.       " $nmsgs >& $echoout &";
-	    print "Running $rwcmd...\n";
-	    system $rwcmd;
-	}
-
+	my $rwcmd = "$bindir/readwrite HUB $kbchkarg $devfiles{$i} ".($stuffmode?"-s":"").
+	    " $nmsgs >& $echoout &";
 	my $tccmd = "$bindir/tcaltest  -d $dorfreq  $tprocfiles{$i} $ntcals "
 	    .($savetcal?"":"noshow")." 2>$tcalout 1>$tcaldata &";
+	if($nmsgs > 0) {
+	    print "Running $rwcmd...\n";
+	    system $rwcmd;
+
+	}
 	if($ntcals > 0 && ! $skiptcal) {
 	    print "Running $tccmd...\n";
 	    system $tccmd;
 	}
-	
-	push @domlist, "$card{$i}$pair{$i}$dom{$i}";
     }
-
-    if(! $useReadwrite && $nmsgs > 0) { # Single process for all DOMs
-	my $domsarg = join " ", @domlist;
-	my $echocmd = "$echoloop -n $nmsgs $domsarg >& echo_results_all.out &";
-	print "Running $echocmd...\n";
-	system $echocmd;
-    }
-
     if($testgps) {
 	my @pfs = </proc/driver/domhub/card*/syncgps>;
 	for(@pfs) {
 	    m|/proc/driver/domhub/card(\d+)/syncgps|;
 	    my $fout = "card$1_gps.out";
 	    my $chk = ($checkgps ? "-e $gpsskip,$gpsticks" : "");
-	    my $gpscmd = "/usr/local/bin/readgps -f -g -d $_ >&$fout $chk &";
+	    my $gpscmd = "/usr/local/bin/readgps -d $_ >&$fout $chk &";
 	    print "Running $gpscmd...\n";
 	    system $gpscmd;
 	}
@@ -378,13 +340,67 @@ dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
     $longjobs = 1;
 });
 
+sub get_interrupts {
+
+#            CPU0       CPU1
+#   0:   43128503   43074691    IO-APIC-edge  timer
+#   1:          1          2    IO-APIC-edge  keyboard
+#   2:          0          0          XT-PIC  cascade
+#   8:          1          0    IO-APIC-edge  rtc
+#   9:          2          0   IO-APIC-level  ohci1394
+#  11:   13450700   13520695   IO-APIC-level  dpti0, eth0
+#  14:          0          2    IO-APIC-edge  ide0
+
+    my @dhlines = `cat /proc/interrupts`;
+    my $sumint = 0;
+    for(@dhlines) {
+	chomp;
+	if(/^\s*\d+:\s+(\d+)/) {    # Find good lines
+	    # print;
+	    s/^\s+\d+:\s+//;        # strip off leading whitespace & IRQ
+	    my @toks = split /\s+/;
+	    # Sum interrupts for all CPUs 
+	    # until non-decimal-number token (interrupt type)
+	    my $thissum = 0;
+	    my $tok;
+	    while($tok = shift @toks) {
+		if($tok =~ /^\d+$/) { 
+		    $thissum += $tok;
+		} else {
+		    last;
+		}
+	    }
+	    # print "... sum $thissum: ";
+	    # Find devices, look for dh
+	    my $isdriver = 0;
+	    while($tok = shift @toks) {
+		# print "[$tok]";
+		if($tok =~ /^dh,?$/) {
+		    $isdriver = 1;
+		    $sumint += $thissum;
+		}
+	    }
+	    # print $isdriver? "DRIVER" : "not driver";
+	    # print "\n";
+	}
+    }
+    warn "No interrupts found for DOR-driver!\n" unless $sumint;
+    return $sumint;
+}
+
 if($timedrun) {
     my $now = time;
     print "Started run at ".(scalar localtime)."\n";
+    my $int0 = get_interrupts;
     print "Calculating system CPU load (monitoring for $cpu_timing_interval seconds)...: ";
     my $result = `vmstat $cpu_timing_interval 2 | tail -1 | awk '{print \$15}'`;
     chomp $result;
     print "$result\%.\n";
+    my $int1 = get_interrupts;
+    if($int1) { # Don't report interrupts unless some were found 2nd time
+	my $rate = ($int1 - $int0) / $cpu_timing_interval;
+	printf "Interrupt rate = %2.2f Hz.\n", $rate;
+    }
     while(1) {
 	my $later = time;
 	if($later - $now > $timedrun) {
@@ -400,7 +416,7 @@ if($timedrun) {
 		print "Stagedtests.pl: SUCCESS.\n";
 	    }
 	    exit;
-        }
+	}
 	sleep 1;
     }
 } elsif($longjobs) {
@@ -419,12 +435,12 @@ sub moni {
 }
 
 sub check_for_running_processes {
-# Check for readwrite, echo-test, or tcaltest
+# Check for readwrite or tcaltest
     while(1) {
 	my @ps = `ps --columns 1000 ax`;
 	my $foundAlien = 0;
 	for(@ps) {
-	    if ((/readwrite HUB/ || /echo-test/ || (! $skiptcal && /tcaltest/)) && !/emacs/) {
+	    if ((/readwrite HUB/ || (! $skiptcal && /tcaltest/)) && !/emacs/) {
 		print STDERR "$_";
 		$foundAlien++;
 	    }
@@ -452,7 +468,7 @@ sub killall {
 	my $hadone = 0;
 	my @ps = `ps --columns 1000 ax`;
 	for(@ps) {
-	    if(m|/usr/local/bin/$argname| || m|/usr/local/share/domhub-testing/$argname|) {
+	    if(m|/usr/local/bin/$argname|) {
 		$hadone++;
 		my $pid = (split " ")[0];
 		my $killed = kill ('TERM', $pid);
@@ -472,8 +488,6 @@ sub killall {
 
 sub kill_running_processes {
     killall "readwrite";
-    killall "echo-loop";
-    killall "echo-test";
     killall "tcaltest" unless $skiptcal;
     killall "readgps";
 }
@@ -507,7 +521,6 @@ sub check_doms_comms_status {
 	my $isresp = `cat $procdir/card$card{$_}/pair$pair{$_}/dom$dom{$_}/is-communicating`;
 	print $isresp;
 	if($isresp !~ /is communicating/) {
-	    print "ERROR: expected communicating DOM at $card{$_}$pair{$_}$dom{$_}!\n";
 	    $ok = 0;
 	}
     }
@@ -620,7 +633,7 @@ sub check_card_procs {
     for(keys %dom) {
 	my $cardproc = "$procdir/card$card{$_}";
 	if(! -e $cardproc) {
-	    print "Proc file $cardproc missing, probably card not installed?\n";
+	    print "Proc file $cardproc missing, probably not installed.\n";
 	    print "Check input file \"$inputfile\".\n";
 	    exit;
 	}
@@ -684,7 +697,7 @@ sub iceboot_all {
     for($i=0; $i<$ndoms; $i++) {
         $secmd .= $card{$i}.$pair{$i}.$dom{$i}." ";
     }
-    $secmd .= "r r.+\\\?\\\>";
+    $secmd .= "r r";
     # $secmd .= ".+\\>" unless $loopback;
     print "$secmd...\n";
     my $tf = "/tmp/st$$"."_se.tmp";
@@ -706,12 +719,9 @@ sub echo_mode_all {
     for($i=0; $i<$ndoms; $i++) {
         $seprecmd .= $card{$i}.$pair{$i}.$dom{$i}." ";
     }
-    my $fwname;
-    $fwname = "configboot.sbi" if $useconfigboot;
-    $fwname = "domapp.sbi"     if $usedomapp;
-    if($useconfigboot || $usedomapp) {
-	# Start configboot or domapp firmware on DOM
-	my $emstr = "s\\\"\\\ $fwname\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\>";
+    if($useconfigboot) {
+	# Start configboot firmware on DOM
+	my $emstr = "s\\\"\\\ configboot.sbi\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\>";
 	my $secmd = $seprecmd . $emstr;
 	print "$secmd\n";
 	my $tf = "/tmp/st$$"."_se.tmp";
@@ -719,7 +729,7 @@ sub echo_mode_all {
 	my $result = `cat $tf`;
 	unlink $tf;
 	if($result !~ /success/i) {
-	    print "Load of alternate firmware failed: $result.  Sorry.\n";
+	    print "Load of configboot firmware failed: $result.  Sorry.\n";
 	    print "stagedtests FAILURE.\n";
 	    exit;
 	}
@@ -750,31 +760,20 @@ sub check_log_files {
 		print "$card{$i} $pair{$i} $dom{$i}: Good ID ($id).\n";
 	    } else {
 		print "Failed to get DOM ID for $card{$i} $pair{$i} $dom{$i}.\n";
+		print "stagedtests FAILURE.\n";
 		$retval = 1;		    
 	    }
 	}
     }
     if($nmsgs > 0) {
-	if($useReadwrite) {
-	    for($i=0; $i<$ndoms; $i++) {
-		my $echoout = "echo_results_c$card{$i}"."w$pair{$i}"."d$dom{$i}.out";
-		my $tail = `tail -1 $echoout`;
-		print $tail;
+	for($i=0; $i<$ndoms; $i++) {
+	    my $echoout = "echo_results_c$card{$i}"."w$pair{$i}"."d$dom{$i}.out";
+	    my $tail = `tail -1 $echoout`;
+	    print $tail;
 # /dev/dhc0w0dA: 1000 msgs (last 188B, 1.19 MB tot, 27.11 sec, 45.86 kB/sec, ARR=0)
-		if($tail !~ m|/dev/dhc\d+w\d+d\S: \d+ msgs \(last|) {
-                    print "Unexpected result in $echoout: $tail\n";
-		    $retval = 1;
-		}
-	    }
-	} else {
-	    my @lines = `cat echo_results_all.out`;
-	    for(@lines) {
-		print;
-		# 10 msgs:
-		if(! /^\d\d\S\s+\d+\s+\S+\s+\d+$/ && ! /^\d+ msgs:$/) {
-		    print "Unexpected result echo_results_all.out: $_\n";
-                    $retval = 1;
-		}
+	    if($tail !~ m|/dev/dhc\d+w\d+d\S: \d+ msgs \(last|) {
+		print "stagedtests FAILURE.\n";
+		$retval = 1;
 	    }
 	}
     }
@@ -785,7 +784,7 @@ sub check_log_files {
 	    print $tail;
 # /proc/driver/domhub/card0/pair0/domB/tcalib: 2380 tcals, 0 rdtimeouts, 0 wrtimeouts.
 	    if($tail !~ m|/proc/driver/domhub/card\d+/pair\d+/dom\S/tcalib: \d+ tcals|) {
-                print "Unexpected result in $tcalout - $tail\n";
+		print "stagedtests FAILURE.\n";
 		$retval = 1;
 	    }
 	}
@@ -795,23 +794,16 @@ sub check_log_files {
 	for(@pfs) {
 	    m|/proc/driver/domhub/card(\d+)/syncgps|;
 	    my $outfile = "card$1_gps.out";
-	    my $tail = `tail -1 $outfile`;
+	    my $data = `tail -1 $outfile`;
 # GPS 320:19:31:11 TQUAL(' ' exclnt.,<1us) DOR 0000000056bd138c
-	    if($tail !~ /GPS.+?TQUAL.+?DOR/ || $tail =~ /fail/i) {
-		print "$outfile: $tail\n";
-		$retval = 1;
-	    }
-	    my @grep = `grep -i 'bad dt' $outfile`;
-	    foreach my $line(@grep) {
-		chomp $line;
-		if($line =~ /\s+BAD\s+DT/i) {
-		    print "$outfile: $line\n";
-		    $retval = 1;
-		}
+	    if($data !~ /GPS.+?TQUAL.+?DOR/ || $data =~ /fail/i) {
+		print "$outfile: $data\n";
+		print "stagedtests FAILURE.\n";
+		return 1;
 	    }
 	}
     }
-    print "stagedtests FAILURE.\n" if $retval;
+
     return $retval;
 }
 

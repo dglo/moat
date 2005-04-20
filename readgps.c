@@ -16,7 +16,6 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
@@ -30,21 +29,14 @@
 #define COL      ':'
 #define QUALPOS   13
 #define MAXRETRIES 3
-#define MAXFLUSH  11
 
 int usage(void) {
   fprintf(stderr,
-	  "Usage: readgps <card_proc_file> OR\n"
-	  "       readgps <card #>\n"
+	  "Usage: readgps <card_proc_file>\n"
+	  "       readgps <card>\n"
 	  "Options:  -d       Show difference in DOR clock ticks\n"
 	  "          -o       One-shot (single readout)\n"
 	  "          -w <n>   Wait n seconds between readout cycles\n"
-	  "          -i <n>   Ignore first <n> time strings when checking\n"
-	  "                   delta-t values (default: 15)\n"
-	  "          -f       Flag deviations from 20M ticks of delta time\n"
-	  "          -c       REQUIRE 20M clock tick time difference.\n"
-	  "          -g       Flag deviations from 1 sec in GPS times\n"
-	  "          -s       Flush DOR buffer at launch\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -86,38 +78,20 @@ int getcard(char *s, int max) {
   return gotdigit ? card : -1;
 }
 
-long long gps_to_secs(char * gps) {
-  return ((gps[1]-'0')*100 + (gps[2]-'0')*10 + (gps[3]-'0') - 1)*86400 // Days, from Jan 0
-    +    ((gps[5]-'0')*10 + (gps[6]-'0'))*3600                     // Hrs
-    +    ((gps[8]-'0')*10 + (gps[9]-'0'))*60                       // Min
-    +    (gps[11]-'0')*10 + (gps[12]-'0');                         // Sec
-}
-
 int main(int argc, char ** argv) {
-  int dodiff     = 0;
-  int nretries   = 0;
-  int oneshot    = 0;
-  int icard      = 9;
-  int waitval    = 1;
-  int skipdt     = 15;
-  int dodt       = 0;
-  int flaggps    = 0;
-  int doflag     = 0;
-  int had_bad_dt = 0;
-  int doflush    = 0;
+  int dodiff   = 0;
+  int nretries = 0;
+  int oneshot  = 0;
+  int icard    = 9;
+  int waitval  = 1;
 
   while(1) {
-    char c = getopt(argc, argv, "dogchfsi:w:");
+    char c = getopt(argc, argv, "hdow:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
     case 'o': oneshot = 1; break;
     case 'w': waitval = atoi(optarg); break;
-    case 'i': skipdt = atoi(optarg); break;
-    case 'c': dodt = 1; break;
-    case 'f': doflag = 1; break;
-    case 'g': flaggps = 1; break;
-    case 's': doflush = 1; break;
     case 'h':
     default:
       exit(usage());
@@ -126,7 +100,6 @@ int main(int argc, char ** argv) {
 
   if(argc == optind) exit(usage());
 
-  
   char pfnam[MAXPROC];
   if(isdigit_all(argv[optind], MAXPROC)) {
     sprintf(pfnam, "/proc/driver/domhub/card%d/syncgps", atoi(argv[optind]));
@@ -144,34 +117,13 @@ int main(int argc, char ** argv) {
 
   char tsbuf[TSBUFLEN];
   int nr, fd;
-  int i, done;
-  int tscount = 0;
+  int nok = 0;
   unsigned long long t, tlast;
 
 
   signal(SIGQUIT, argghhhh); /* "Die, suckah..." */
   signal(SIGKILL, argghhhh);
   signal(SIGINT,  argghhhh);
-
-  long long last_t;
-  int had_t = 0;
-
-  /* Flush all the buffered DOR timestamps if requested */
-  if (doflush) {
-    i = done = 0;
-    /* Note: for driver reasons(?), have to open/close every loop */
-    while (!done) {
-      fd = open(pfnam, O_RDONLY);
-      if(fd == -1) { 
-	fprintf(stderr,"Can't open file %s: %s\n", argv[optind], strerror(errno));
-	fprintf(stderr,"You may need a new driver revision: try V02-02-11 or higher.\n");
-	exit(errno);
-      }    
-      nr = read(fd, tsbuf, TSBUFLEN);
-      done = (nr == 0) || (i++ >= MAXFLUSH);
-      close(fd);
-    }
-  }
 
   while(1) {
     if(die) break;
@@ -216,48 +168,20 @@ int main(int argc, char ** argv) {
     default:  fprintf(stdout," UNKNOWN!"); break;
     }
     fprintf(stdout," DOR(%d) ", icard);
-    t = 0ULL;
+    t = 0L;
     for(i=QUALPOS+1;i<TSBUFLEN;i++) {
       fprintf(stdout,"%02x", (unsigned char) tsbuf[i]);
       t <<= 8;
       t |= (unsigned char) tsbuf[i];
     }
-    unsigned long long dt = (t - tlast);
-    if(dodiff && tscount > 0) {
-      fprintf(stdout," dt=%llu ticks", dt);
+    if(dodiff && nok > 0) {
+      unsigned long dt = (unsigned long) (t - tlast);
+      fprintf(stdout," dt=%lu ticks", dt);
     }
-#   define WANT_DT 20000000ULL
-    if((doflag || dodt) && tscount > skipdt && dt != WANT_DT) {
-      fprintf(stdout," BAD DT!!");
-      had_bad_dt = 1;
-    }
-    fprintf(stdout,"\n"); 
-    fflush(stdout);
-
-    if(dodt && tscount > skipdt && dt != WANT_DT) {
-      fprintf(stderr,"readgps ERROR: %s: bad DOR time difference dt=%llu, wanted %llu.\n",
-	      pfnam, dt, WANT_DT);
-      die = 1;
-    }      
-
-    long long this_t = gps_to_secs(tsbuf);
-    if(flaggps && had_t && tscount > skipdt 
-       && this_t != 0) {  // Exception for Jan 0 rollover
-      long long lldt = this_t - last_t;
-      if(lldt != 1) {
-	had_bad_dt = 1;
-	fprintf(stderr,"readgps ERROR: %s: bad GPS time difference!  last_t=%lld, this_t=%lld.\n",
-		pfnam, last_t, this_t);
-      }
-    }
-    had_t = 1;
-    last_t = this_t;
+    fprintf(stdout,"\n");
     tlast = t;
-    tscount++;
+    nok++;
     if(oneshot || die) break;
-  }
-  if(die && had_bad_dt) {
-    fprintf(stderr,"readgps WARNING: %s: had a bad delta-T value!\n", pfnam);
   }
   return 0;
 } 
