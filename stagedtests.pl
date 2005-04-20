@@ -37,7 +37,7 @@ my $require_kbmin = 40; # Require this many kB/sec during readwrite
 my $checkgps      = 0;
 my $gpsskip       = 15;
 my $gpsticks      = 20000000;
-
+my $loopback      = 0;
 sub usage { return <<EOF;
 
 Usage: $0 [st.in]
@@ -55,6 +55,9 @@ Usage: $0 [st.in]
 	  [-v|-savetcal]       Save time calibration data for each channel
 	  [-f|-fixsinglepkt <n>] Fix first single pkt length to <n> bytes
 	  [-S|-skipkbcheck]    Allow slow connection / skip bandwidth min. check
+	  [-X|-loopback]       Tweaks to support loopback mode firmware:
+	                         - don't wait for ">" from iceboot
+                                 - don't softboot DOMs
 	  [-b|-useconfigboot]  Use echo-mode-cb rather than echo-mode; 
                                this selects configboot firmware for echo test
                                (if supported by your DOM software release)
@@ -94,7 +97,10 @@ GetOptions("help|h"          => \$help,
 	   "savetcal|v"      => \$savetcal,
 	   "useconfigboot|b" => \$useconfigboot,
 	   "skipkbcheck|S"   => \$skipkbchk,
+	   "loopback|X"      => \$loopback,
 	   "skiptcal|x"      => \$skiptcal) || die usage;
+
+$loopback=1 if defined $loopback;
 
 my $fixsinglepktarg;
 $fixsinglepktarg = (defined $fixsinglepkt)? "-p $fixsinglepkt" : "";
@@ -154,7 +160,7 @@ if($testgps) {
 	     \&test_single_gps);
 }
 
-if(!$moni) {    
+if(!$moni && !$loopback) {    
     dochoice("[p]ower off modules", 'p', FALLTHRU_OK, \&power_off_modules);
     dochoice("power [o]n modules", 'o', FALLTHRU_OK, \&power_on_modules);
 }
@@ -230,7 +236,7 @@ check_doms_comms_status;
 
 dochoice("put modules in [i]ceboot", 'i', FALLTHRU_OK, \&iceboot_all);
 
-dochoice("soft[b]oot all modules", 'b', FALLTHRU_OK, \&softboot_all);
+dochoice("soft[b]oot all modules", 'b', FALLTHRU_OK, \&softboot_all) unless $loopback;
 
 dochoice("Show DOM (i)d numbers", 'i', FALLTHRU_OK, sub {
     for($i=0; $i<$ndoms; $i++) {
@@ -242,7 +248,7 @@ dochoice("Show DOM (i)d numbers", 'i', FALLTHRU_OK, sub {
 	    exit;
 	}
     }
-}) unless $skipid;
+}) unless $skipid || $loopback;
 
 # dochoice("Perform [e]cho-mode / softboot tests", 'e',  FALLTHRU_OK, sub { 
 #     echo_mode_all;
@@ -710,7 +716,8 @@ sub iceboot_all {
     for($i=0; $i<$ndoms; $i++) {
         $secmd .= $card{$i}.$pair{$i}.$dom{$i}." ";
     }
-    $secmd .= "r r.+\\>";
+    $secmd .= "r r";
+    # $secmd .= ".+\\>" unless $loopback;
     print "$secmd...\n";
     my $tf = "/tmp/st$$"."_se.tmp";
     system "$secmd 2>&1 | tee $tf";

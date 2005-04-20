@@ -9,3 +9,6 @@ Factored out of dor-driver in March, 2005
 First release notes:
 
 fixed tcaltest so that it complains and stops if wire pair power is off.
+
+4/20/05: Added "loopback" option to moat and stagedtests.pl
+4/4/05:  Fixed readgps so that normal output goes to stdout
