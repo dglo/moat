@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.3 2005-04-20 21:17:53 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.4 2005-04-20 21:31:29 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -65,9 +65,9 @@ GetOptions("help|h"          => \$help,
 
 die usage if $help;
 $loopback = 1 if defined $loopback;
-if($loopback && ($savtsecs !=0 || $relsecs !=0)) {
+if($loopback && ($cbsecs !=0 || $savtsecs !=0)) {
     die "Tcalib operations not supported w/ loopback firmware.\n"
-	."Use -c (configboot) test with loopback.\n";
+	."Use -r (release) test with loopback.\n";
 }
 
 
@@ -208,7 +208,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X ":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X ":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;

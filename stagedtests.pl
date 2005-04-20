@@ -528,26 +528,7 @@ sub check_doms_comms_status {
 }
 
 sub show_firmware_versions {
-    my $resp = "";
-    my @cards = </proc/driver/domhub/card*>;
-
-    $resp .= "Driver ".`cat /proc/driver/domhub/revision`;
-
-    my $fw;
-    foreach my $card(@cards) {
-        my @fpga = `cat $card/fpga`;
-        for(@fpga) {
-            if(/FREV/) {
-                if(/FREV\s+0x000(\w)(\w\w)(\w\w)/) {
-                    $fw = "$1$2".chr(hex($3));
-                    $resp .= "$card -- $fw\n";
-                } else {
-                    $resp .= "$card -- Corrupt FREV: $_.\n";
-                }
-            }
-        }
-    }
-    return $resp;
+    return `fvers.pl`;
 }
 
 sub getkey {
