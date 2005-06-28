@@ -178,7 +178,8 @@ int main(int argc, char ** argv) {
       unsigned long dt = (unsigned long) (t - tlast);
       fprintf(stdout," dt=%lu ticks", dt);
     }
-    fprintf(stdout,"\n");
+    fprintf(stdout,"\n"); 
+    fflush(stdout);
     tlast = t;
     nok++;
     if(oneshot || die) break;

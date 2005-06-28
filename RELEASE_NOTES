@@ -1,6 +1,12 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
+V00-00-04 6/28/05
+Bug fixes/new features:
+- Fixed non-flushing std. output in readgps.c
+
+============================================================================
+
 V00-00-03 6/28/05
 Bug fixes/new features:
 - Renamed options in moat and stagedtests.pl to avoid conflicts.
