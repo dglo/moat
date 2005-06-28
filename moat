@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.5 2005-04-20 23:20:37 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.6 2005-06-28 17:37:18 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -18,7 +18,7 @@ my $cbsecs    = 10 * 60;  # 10 min
 my $savtsecs  = 0;
 my $skipmjb;
 my $fixsingle;
-my $loopback  = 0;
+my $loopback;
 my $skipkbchk = 0;
 
 sub usage { return <<EOF;
@@ -30,7 +30,7 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-f|-fixsingle]      Single packet length for stagedtests initial
 	                        echo test (default: random)
 	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
-	   [-S|-skipkbchk]      Skip check on minimum bandwidth
+	   [-i|-skipkbchk]      Skip check on minimum bandwidth
            [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
 
@@ -62,12 +62,13 @@ GetOptions("help|h"          => \$help,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
 	   "loopback|X"      => \$loopback,
-	   "skipkbchk|S"     => \$skipkbchk,
+	   "skipkbchk|i"     => \$skipkbchk,
 	   "kill|k"          => \$kill,
 	   "n=i"             => \$n) || die usage;
 
 die usage if $help;
 $skipkbchk = 1 if defined $skipkbchk;
+
 $loopback = 1 if defined $loopback;
 
 

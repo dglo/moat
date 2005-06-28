@@ -2,7 +2,7 @@
 
 #
 # John Jacobsen, John Jacobsen IT Services, for LBNL/IceCube
-# $Id: se.pl,v 1.1 2005-03-14 23:56:01 jacobsen Exp $
+# $Id: se.pl,v 1.2 2005-06-28 17:36:54 jacobsen Exp $
 
 use Fcntl;
 use strict;
@@ -66,7 +66,6 @@ if($ARGV[0] eq "all") {
 }
 
 die "No DOMs specified!\n".usage unless @domdevs > 0;
-
 
 $sendpat = "$sendpat\r";
 
