@@ -1,8 +1,11 @@
-
-
 MOAT test scripts
+John Jacobsen jacobsen@npxesigns.com
 
-John Jacobsen
+V00-00-03 6/28/05
+Bug fixes/new features:
+- Renamed options in moat and stagedtests.pl to avoid conflicts.
+
+============================================================================
 
 Factored out of dor-driver in March, 2005
 
