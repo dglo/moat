@@ -37,7 +37,7 @@ my $require_kbmin = 40; # Require this many kB/sec during readwrite
 my $checkgps      = 0;
 my $gpsskip       = 15;
 my $gpsticks      = 20000000;
-my $loopback      = 0;
+my $loopback;
 sub usage { return <<EOF;
 
 Usage: $0 [st.in]
@@ -54,8 +54,8 @@ Usage: $0 [st.in]
 	  [-p|-probe]          "Probe" for DOMs on power up rather than use st.in.
 	  [-v|-savetcal]       Save time calibration data for each channel
 	  [-f|-fixsinglepkt <n>] Fix first single pkt length to <n> bytes
-	  [-S|-skipkbcheck]    Allow slow connection / skip bandwidth min. check
-	  [-X|-loopback]       Tweaks to support loopback mode firmware:
+	  [-i|-skipkbcheck]    Allow slow connection / skip bandwidth min. check
+	  [-o|-loopback]       Tweaks to support loopback mode firmware:
 	                         - don't wait for ">" from iceboot
                                  - don't softboot DOMs
 	  [-b|-useconfigboot]  Use echo-mode-cb rather than echo-mode; 
@@ -96,8 +96,8 @@ GetOptions("help|h"          => \$help,
 	   "probe|p"         => \$probe,
 	   "savetcal|v"      => \$savetcal,
 	   "useconfigboot|b" => \$useconfigboot,
-	   "skipkbcheck|S"   => \$skipkbchk,
-	   "loopback|X"      => \$loopback,
+	   "skipkbcheck|i"   => \$skipkbchk,
+	   "loopback|o"      => \$loopback,
 	   "skiptcal|x"      => \$skiptcal) || die usage;
 
 $loopback=1 if defined $loopback;
