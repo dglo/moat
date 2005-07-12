@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.8 2005-07-12 16:01:47 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.9 2005-07-12 16:03:34 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -168,7 +168,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -b -t $cbsecs -x -d $dorfreq $fsarg "
 	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p").($loopback?" -X":"")
-	    .($skipkbchk?" -S":"");
+	    .($skipkbchk?" -i":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -191,7 +191,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -S":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -213,7 +213,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -S":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
