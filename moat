@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.7 2005-07-12 15:53:31 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.8 2005-07-12 16:01:47 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -19,7 +19,7 @@ my $savtsecs  = 0;
 my $skipmjb;
 my $fixsingle;
 my $loopback;
-my $skipkbchk = 0;
+my $skipkbchk=0;
 
 sub usage { return <<EOF;
 Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
@@ -67,7 +67,6 @@ GetOptions("help|h"          => \$help,
 	   "n=i"             => \$n) || die usage;
 
 die usage if $help;
-$skipkbchk = 1 if defined $skipkbchk;
 
 $loopback = 1 if defined $loopback;
 
