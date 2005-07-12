@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.6 2005-06-28 17:37:18 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.7 2005-07-12 15:53:31 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -97,7 +97,7 @@ while(!defined $dorfreq) {
     last if $dorfreq == 10 || $dorfreq == 20;
 }
 
-die usage if($testgps && $dorfreq != 10);
+die "GPS can only be run w/ 10MHz clock speed!\n".usage if($testgps && $dorfreq != 10);
 my $gpsflag = $testgps ? "-g" : "";
 
 if(defined @exclude) {
