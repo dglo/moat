@@ -19,6 +19,9 @@ readgps: readgps.c
 rndpkt: rndpkt.c
 	gcc -Wall -o rndpkt rndpkt.c
 
+rpm:
+	dorpm `cat moat-version`
+
 install: 
 	install moat-version   $(INSTALL_CONF)
 	install readwrite      $(INSTALL_BIN)
