@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+
+# dorpm
+# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# Started: Tue Jul 12 23:00:28 2005
+
+# Procedure:
+# update release notes
+# tagmoat with desired <tag>
+# "make rpm" invokes dorpm <tag>
+
+use strict;
+
+print "Welcome to $0.\n";
+
+die "Sorry bud, gotta be root to do this.\n" unless $< == 0;
+
+my $version = shift; chomp $version;
+sub usage;
+die usage unless defined $version;
+print "Version is $version.\n";
+my $rpmver = $version; 
+$rpmver =~ s/^V//; 
+$rpmver =~ s/\-/\./g;
+print "RPM version is $rpmver.\n";
+
+chdir ".." or die "Can't CD .. : $!\n";
+
+my $r;
+$r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
+$r = `cp -Rp moat moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
+$r = `tar czf /tmp/moat-$rpmver.tgz --exclude=moat-$rpmver/CVS moat-$rpmver 2>&1`;
+die "$r\n" unless $r eq "";
+$r = `cp /tmp/moat-$rpmver.tgz /usr/src/redhat/SOURCES 2>&1`; die "$r\n" unless $r eq "";
+$r = `cp moat-$rpmver/moat.spec /usr/src/redhat/SPECS/moat-$rpmver.spec 2>&1`; die "$r\n" unless $r eq "";
+chdir "/usr/src/redhat" or die "Can't CD to /usr/src/redhat: $!\n";
+system "rpmbuild -ba -D 'VER $rpmver' -D 'REL 0' SPECS/moat-$rpmver.spec 2>&1";
+print $r;
+$r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
+
+exit;
+
+sub usage { 
+    return <<EOF;
+Usage: $0 <version>
+EOF
+;
+}
+__END__
+
