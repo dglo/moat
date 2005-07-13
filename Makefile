@@ -1,4 +1,6 @@
-INSTALL_BIN = /usr/local/bin
+DESTDIR      = /usr/local
+INSTALL_BIN  = $(DESTDIR)/bin
+INSTALL_CONF = $(DESTDIR)/share
 
 all:
 	make readwrite dtest tcaltest dtest readgps rndpkt
@@ -18,7 +20,11 @@ readgps: readgps.c
 rndpkt: rndpkt.c
 	gcc -Wall -o rndpkt rndpkt.c
 
+rpm:
+	./dorpm `cat moat-version`
+
 install: 
+	install moat-version   $(INSTALL_CONF)
 	install readwrite      $(INSTALL_BIN)
 	install dtest          $(INSTALL_BIN)
 	install tcaltest       $(INSTALL_BIN)

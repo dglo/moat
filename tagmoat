@@ -1,0 +1,120 @@
+#!/usr/bin/perl
+
+# tagtools
+# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# $Id: tagmoat,v 1.1 2005-07-12 20:06:52 jacobsen Exp $
+
+use strict;
+
+print "Welcome to $0.\n";
+
+my $project = "moat";
+my $tag;
+my $bfd_or_tag;
+my $deliver;
+
+do {
+    print "(N)ew tag or (B)FD-based tag? "; 
+    my $resp = <STDIN>; chomp $resp;
+    if($resp =~ /^n/i) {
+	$bfd_or_tag = "TAG";
+	print "Enter tag name: "; $tag = <STDIN>; chomp $tag;
+    } elsif($resp =~ /b/i) {
+	$bfd_or_tag = "BFD";
+	my $log = `cvs log Makefile | grep V`;
+	my $def = "";
+	print "List of existing tags:\n$log\n";
+	if($log =~ /(V\d\d-\d\d-\d\d)/) { $def = $1; }
+	print "Enter most recent BFD tag for this project [$def]: ";
+	my $bfd = <STDIN>; chomp $bfd;
+	if($bfd eq "") { $bfd = $def; }
+	my $major;
+	my $minor;
+	my $bug;
+	if($bfd =~ /V(\d\d)-(\d\d)-(\d\d)/) {
+	    $major = $1;
+	    $minor = $2;
+	    $bug   = $3;
+	    print "Are you creating a (major), (minor), or (bug) release? ";
+	    my $resp = <STDIN>; chomp $resp;
+	    if($resp =~ /^ma/) {
+		$major++;
+		$minor = 0;
+		$bug   = 0;
+		$deliver = "-j";
+		$tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
+	    } elsif($resp =~ /^mi/) {
+		$minor++;
+		$bug = 0;
+		$deliver = "-n";
+                $tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
+	    } elsif($resp =~ /^b/) {
+		$bug++;
+		$deliver = "-b";
+                $tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
+	    } else {
+		print "Huh?\n";
+	    }
+	}
+    } 
+} until defined $tag;
+
+print "Create new release with release tag \"$tag\"? ";
+chomp(my $resp = <STDIN>);
+exit if($resp !~ /^y/i);
+
+print "Did you update RELEASE_NOTES for $tag? ";
+chomp(my $resp = <STDIN>);
+exit if($resp !~ /^y/i);
+
+my $verFile = "$project"."-version";
+die "Can't find current $verFile!  Old version of $project?\n" unless -f $verFile;
+print "Updating $verFile...\n";
+print `cvs update -A $verFile`;
+
+sub create_verfile {
+    my $tag = shift;
+    print "Creating new $verFile...\n";
+    open H, ">$verFile" || die "Can't open $verFile: $!\n";
+    print H "$tag\n";
+    close H;
+    print "New $verFile is:\n".`cat $verFile`;
+}
+create_verfile $tag;
+
+print "Result of cvs diff --brief:\n".`cvs diff --brief`;
+
+print "Commit current version of project '$project' to CVS? ";
+chomp(my $resp = <STDIN>);
+if($resp =~ /^y/i) {
+    print `cvs commit -m "Tagging current version as $tag..."`;
+}
+
+if($bfd_or_tag eq "TAG") {
+    print "Tag current release as $tag? ";
+    chomp(my $resp = <STDIN>);
+    if($resp =~ /^y/i) {
+	print `cd ..; cvs tag $tag $project; cd $project`;
+    }
+} elsif($bfd_or_tag eq "BFD") {
+    print "Deliver $tag? ";
+    chomp(my $resp = <STDIN>);
+    if($resp =~ /^y/i) {
+	chdir "..";
+	system "bfd deliver $deliver $project";
+	chdir "project";
+    }
+}
+
+print "Pollute version file to show HEAD? ";
+chomp(my $resp = <STDIN>);
+if($resp =~ /^y/i) {
+    create_verfile "HEAD!";
+    print `cvs commit -m "Mod of $verFile to show HEAD..." $verFile`;
+}
+
+print "\n\nDone.\n";
+
+
+__END__
+
