@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.9 2005-07-12 16:03:34 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.10 2005-07-18 22:12:29 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -33,7 +33,7 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-i|-skipkbchk]      Skip check on minimum bandwidth
            [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
-
+           [-w]                 Perform echotests using readwrite (default: echo-test)
 	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
 	                        (default $cbsecs)
 	   [-r|-relsecs]        Number of seconds for "release" stagedtests runs
@@ -49,7 +49,8 @@ my $help;
 my $dorfreq;
 my $testgps;
 my $kill;
-my $n        = 1;
+my $useReadwrite = 0;
+my $n = 1;
 my @exclude;
 
 GetOptions("help|h"          => \$help,
@@ -61,6 +62,7 @@ GetOptions("help|h"          => \$help,
 	   "exclude|e=s"     => \@exclude,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
+	   "w"               => \$useReadwrite,
 	   "loopback|X"      => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
 	   "kill|k"          => \$kill,
@@ -130,7 +132,7 @@ sub mydie { my $m = shift; print LOG $m; die $m; }
 print "\nResults to appear in directory $testdir\n\n";
 
 open VERSION, ">$versionfile" || die "Can't open $versionfile: $!\n";
-print VERSION `/usr/local/bin/domhub-version`;
+print VERSION `/usr/local/bin/domhub-version 2>&1`;
 close VERSION;
 
 my $st_in;
@@ -168,7 +170,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -b -t $cbsecs -x -d $dorfreq $fsarg "
 	    ."$gpsflag -s ".(defined $st_in ? "st.in" : "-p").($loopback?" -X":"")
-	    .($skipkbchk?" -i":"");
+	    .($skipkbchk?" -i":"").($useReadwrite?" -w":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -191,7 +193,8 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"")
+	    .($useReadwrite?" -w":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -213,7 +216,8 @@ for(my $iter=0; $iter<$n; $iter++) {
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
 	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag "
-	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"");
+	    .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"")
+	    .($useReadwrite?" -w":"");
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
