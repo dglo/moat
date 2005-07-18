@@ -29,6 +29,7 @@ install:
 	install dtest          $(INSTALL_BIN)
 	install tcaltest       $(INSTALL_BIN)
 	install readgps        $(INSTALL_BIN)
+	install echo-loop      $(INSTALL_BIN)
 	install rndpkt         $(INSTALL_BIN)
 	install watchcomms     $(INSTALL_BIN)
 	install moat           $(INSTALL_BIN)
