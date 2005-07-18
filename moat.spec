@@ -11,6 +11,7 @@ Prefix: %{_prefix}
 Requires: kernel-source >= 2.4
 Requires: perl > 5.0
 Requires: domhub-tools >= 100
+Requires: dor-driver
 
 %description
 IceCube MOAT testing applications
@@ -30,6 +31,7 @@ install moat-version ${RPM_BUILD_ROOT}/usr/local/share
 install readwrite ${RPM_BUILD_ROOT}/usr/local/bin
 install dtest ${RPM_BUILD_ROOT}/usr/local/bin
 install tcaltest ${RPM_BUILD_ROOT}/usr/local/bin
+install echo-loop ${RPM_BUILD_ROOT}/usr/local/bin
 install readgps ${RPM_BUILD_ROOT}/usr/local/bin
 install rndpkt ${RPM_BUILD_ROOT}/usr/local/bin
 install watchcomms ${RPM_BUILD_ROOT}/usr/local/bin
@@ -49,6 +51,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/local/bin/readwrite
 /usr/local/bin/dtest
 /usr/local/bin/tcaltest
+/usr/local/bin/echo-loop
 /usr/local/bin/readgps
 /usr/local/bin/rndpkt
 /usr/local/bin/watchcomms

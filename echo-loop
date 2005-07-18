@@ -1,0 +1,55 @@
+#!/usr/bin/perl
+
+# echo-loop
+# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# Started: Mon Jul 18 12:12:01 2005
+
+package MY_PACKAGE;
+use strict;
+use Getopt::Long;
+
+my $echotest = "/usr/local/share/domhub-testing/echo-test";
+die "$0: echo test program $echotest not installed, need domhub-tools RPM.\n"
+    unless -x $echotest;
+
+sub usage { 
+    return <<EOF;
+Usage: $0 -n msgs <dom> ....
+EOF
+;
+}
+
+my $nmsgs = 0;
+my $help;
+
+GetOptions("help|h"          => \$help,
+	   "n=i"             => \$nmsgs) or die usage;
+
+my $doms = join ' ', @ARGV;
+
+die usage if $help;
+select STDOUT; $|++;
+
+
+sub dochunk { 
+    return unless $nmsgs > 0;
+    my $delta = shift; die unless defined $delta;
+    my $chunk = $delta;
+    if($nmsgs < $delta) {
+        $chunk = $nmsgs;
+    }
+    my $cmd = "$echotest -n $chunk $doms";
+    print "$chunk msgs:\n";
+    print `$cmd 2>&1`;
+    $nmsgs -= $chunk;
+}
+
+dochunk 1;
+dochunk 10;
+dochunk 100;
+while($nmsgs > 0) {
+    dochunk 1000;
+}
+
+__END__
+
