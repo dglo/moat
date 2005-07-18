@@ -2,6 +2,14 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 100 or greater
 
+V00-00-06  7/18/05
+Bug fixes/new features:
+- Fix bug in counting interrupt rate
+- Added option to use Arthur's echo-test instead of readwrite
+  (useful for large #s of DOMs, as readwrite doesn't scale well)
+
+============================================================================
+
 V00-00-05 7/13/05
 Bug fixes/new features:
 - Fix skipkbchk argument to moat and stagedtests.pl
