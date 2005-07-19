@@ -11,7 +11,6 @@ Prefix: %{_prefix}
 Requires: kernel-source >= 2.4
 Requires: perl > 5.0
 Requires: domhub-tools >= 100
-Requires: dor-driver
 
 %description
 IceCube MOAT testing applications
