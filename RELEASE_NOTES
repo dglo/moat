@@ -2,6 +2,13 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 100 or greater
 
+V00-00-07  7/19/05
+Bug fixes/new features:
+- Remove RPM dependency of dor-driver per Martin's installation
+  requirements
+
+============================================================================
+
 V00-00-06  7/18/05
 Bug fixes/new features:
 - Fix bug in counting interrupt rate
