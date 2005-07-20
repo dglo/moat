@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.10 2005-07-18 22:12:29 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.11 2005-07-20 15:44:05 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -311,7 +311,8 @@ sub have_running_processes {
     foreach my $ps(@ps) {
 	chomp $ps;
 	if($ps =~ m|/usr/local/bin/readwrite| ||
-	   $ps =~ m|/usr/local/bin/tcaltest|  ||
+	   $ps =~ m|/usr/local/bin/echo-loop|  ||
+	   $ps =~ m|/usr/local/bin/echo-test|  ||
 	   $ps =~ m|/usr/local/bin/run-mjb|   ||
 	   $ps =~ m|/bin/bash ./mjb.sh|       ||
 	   $ps =~ m|/usr/local/bin/readgps|   ||
