@@ -11,7 +11,6 @@ use constant CTRL_L      => 12;
 use constant FALLTHRU_OK =>  1;
 use constant NOFALLTHRU  =>  2;
 
-sub get_interrupts;
 sub show_comm_stats;
 my $bindir   = "/usr/local/bin";
 my $procdir  = "/proc/driver/domhub";
@@ -380,16 +379,10 @@ dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
 if($timedrun) {
     my $now = time;
     print "Started run at ".(scalar localtime)."\n";
-    my $int0 = get_interrupts;
     print "Calculating system CPU load (monitoring for $cpu_timing_interval seconds)...: ";
     my $result = `vmstat $cpu_timing_interval 2 | tail -1 | awk '{print \$15}'`;
     chomp $result;
     print "$result\%.\n";
-    my $int1 = get_interrupts;
-    if($int1) { # Don't report interrupts unless some were found 2nd time
-	my $rate = ($int1 - $int0) / $cpu_timing_interval;
-	printf "Interrupt rate = %2.2f Hz.\n", $rate;
-    }
     while(1) {
 	my $later = time;
 	if($later - $now > $timedrun) {
@@ -405,7 +398,7 @@ if($timedrun) {
 		print "Stagedtests.pl: SUCCESS.\n";
 	    }
 	    exit;
-	}
+        }
 	sleep 1;
     }
 } elsif($longjobs) {
@@ -415,54 +408,6 @@ if($timedrun) {
 exit;
 
 #### END OF MAIN
-
-sub get_interrupts {
-
-#            CPU0       CPU1
-#   0:   43128503   43074691    IO-APIC-edge  timer
-#   1:          1          2    IO-APIC-edge  keyboard
-#   2:          0          0          XT-PIC  cascade
-#   8:          1          0    IO-APIC-edge  rtc
-#   9:          2          0   IO-APIC-level  ohci1394
-#  11:   13450700   13520695   IO-APIC-level  dpti0, eth0
-#  14:          0          2    IO-APIC-edge  ide0
-    while(1) {
-	my @dhlines = `cat /proc/interrupts`;
-	my $sumint = 0;
-	for(@dhlines) {
-	    chomp;
-	    if(/^\s*\d+:\s+(\d+)/) {    # Find good lines
-		# print;
-		s/^\s+\d+:\s+//;        # strip off leading whitespace & IRQ
-		my @toks = split /\s+/;
-		# Sum interrupts for all CPUs 
-		# until non-decimal-number token (interrupt type)
-		my $thissum = 0;
-		my $tok;
-		while($tok = shift @toks) {
-		    if($tok =~ /^\d+$/) { 
-			$thissum += $tok;
-		    } else {
-			last;
-		    }
-		}
-		# print "... sum $thissum: ";
-		# Find devices, look for dh
-		my $isdriver = 0;
-		while($tok = shift @toks) {
-		    # print "[$tok]";
-		    if($tok =~ /^dh,?$/) {
-			$isdriver = 1;
-			$sumint += $thissum;
-		    }
-		}
-		# print $isdriver? "DRIVER" : "not driver";
-		# print "\n";
-	    }
-	}
-	return $sumint if $sumint; # Otherwise, go back and wait for dh interrupts
-    }
-}
 
 
 sub moni {
