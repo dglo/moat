@@ -2,6 +2,11 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 100 or greater
 
+V00-00-09  8/5/05
+- Disable verbose logging during MJB
+
+============================================================================
+
 V00-00-08  7/26/05
 Bug fixes/new features:
 - Removed buggy interrupt counting code from moat
