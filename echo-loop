@@ -32,6 +32,7 @@ select STDOUT; $|++;
 
 
 sub dochunk { 
+    
     return unless $nmsgs > 0;
     my $delta = shift; die unless defined $delta;
     my $chunk = $delta;
@@ -40,7 +41,35 @@ sub dochunk {
     }
     my $cmd = "$echotest -n $chunk $doms";
     print "$chunk msgs:\n";
-    print `$cmd 2>&1`;
+
+    # Recipe from the Perl Cookbook, 16.21, p. 595
+    my $result;
+    $SIG{ALRM} = sub { die "timeout\n";};
+    my $deathtime = 160;
+    eval {
+	alarm($deathtime);
+	$result = `$cmd 2>&1`;
+	alarm(0);
+    };
+
+    if($@) {
+	if($@ =~ /timeout/i) {
+	    my $now = time." (".(scalar localtime).")"; 
+	    die "echo-loop ERROR: timeout (>$deathtime seconds) ".
+		"in $echotest at $now (DOM list = $doms)!\n"; 
+	} else {
+	    alarm(0);
+	    die; # Propagate the exception
+	}
+    }
+
+    if($result =~ /echo-test/) {
+	warn $result;
+	die "echo-loop ERROR: echo-test gave the preceeding error message.\n";
+    }
+
+    print $result;
+
     $nmsgs -= $chunk;
 }
 
