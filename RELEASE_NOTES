@@ -4,6 +4,7 @@ Requires: domhub-tools 100 or greater
 
 V00-00-10  8/11/05
 - Catch stuck echo-tests (in case of "Dead DOM" or otherwise)
+- Added '-v' option to moat to show release version
 
 ============================================================================
 
