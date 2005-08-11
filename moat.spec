@@ -8,7 +8,6 @@ License: Copyright 2003 LBNL/IceCube collaboration (sorry, *NOT* GPL)
 Group: System Environment/Base
 BuildRoot: %{_tmppath}/%{name}-root
 Prefix: %{_prefix}
-Requires: kernel-source >= 2.4
 Requires: perl > 5.0
 Requires: domhub-tools >= 100
 
