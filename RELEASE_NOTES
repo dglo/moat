@@ -2,6 +2,11 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 100 or greater
 
+V00-00-11  8/18/05
+- Automatically catch GPS delta-T != 20,000,000 (readgps/stagedtests.pl -> moat)
+
+============================================================================
+
 V00-00-10  8/11/05
 - Catch stuck echo-tests (in case of "Dead DOM" or otherwise)
 - Added '-v' option to moat to show release version
