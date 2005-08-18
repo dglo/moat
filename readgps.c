@@ -37,6 +37,8 @@ int usage(void) {
 	  "Options:  -d       Show difference in DOR clock ticks\n"
 	  "          -o       One-shot (single readout)\n"
 	  "          -w <n>   Wait n seconds between readout cycles\n"
+	  "          -c <n>   Require 20M clock tick time diff. after\n"
+	  "                   the first n time strings.\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -84,14 +86,15 @@ int main(int argc, char ** argv) {
   int oneshot  = 0;
   int icard    = 9;
   int waitval  = 1;
-
+  int skipdt, dodt = 0;
   while(1) {
-    char c = getopt(argc, argv, "hdow:");
+    char c = getopt(argc, argv, "hdow:c:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
     case 'o': oneshot = 1; break;
     case 'w': waitval = atoi(optarg); break;
+    case 'c': dodt = 1; skipdt = atoi(optarg); break;
     case 'h':
     default:
       exit(usage());
@@ -100,6 +103,7 @@ int main(int argc, char ** argv) {
 
   if(argc == optind) exit(usage());
 
+  
   char pfnam[MAXPROC];
   if(isdigit_all(argv[optind], MAXPROC)) {
     sprintf(pfnam, "/proc/driver/domhub/card%d/syncgps", atoi(argv[optind]));
@@ -117,7 +121,7 @@ int main(int argc, char ** argv) {
 
   char tsbuf[TSBUFLEN];
   int nr, fd;
-  int nok = 0;
+  int tscount = 0;
   unsigned long long t, tlast;
 
 
@@ -174,14 +178,22 @@ int main(int argc, char ** argv) {
       t <<= 8;
       t |= (unsigned char) tsbuf[i];
     }
-    if(dodiff && nok > 0) {
-      unsigned long dt = (unsigned long) (t - tlast);
+    unsigned long dt = (unsigned long) (t - tlast);
+    if(dodiff && tscount > 0) {
       fprintf(stdout," dt=%lu ticks", dt);
     }
     fprintf(stdout,"\n"); 
     fflush(stdout);
+
+#   define WANT_DT 20000000UL
+    if(dodt && tscount > skipdt && dt != WANT_DT) {
+      fprintf(stderr,"readgps ERROR: %s: bad time difference dt=%lu, wanted %lu.\n",
+	      pfnam, dt, WANT_DT);
+      die = 1;
+    }      
+
     tlast = t;
-    nok++;
+    tscount++;
     if(oneshot || die) break;
   }
   return 0;
