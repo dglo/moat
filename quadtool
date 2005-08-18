@@ -1,0 +1,253 @@
+#!/usr/bin/perl
+
+# quadtool
+# John Jacobsen, NPX Designs, Inc., jacobsen@npxdesigns.com
+# Started: Fri Jul  1 13:40:54 2005
+
+package QUADTOOL;
+use strict;
+
+sub driverPresent { 1; }
+sub driverVersion { "simV02-07-00"; }
+sub hostName      { "simBluBook"; }
+sub plugged       { my $card = shift; my $pair = shift; return 1; }
+sub timeString    {
+    my ($sec,$min,$hr,$mday,$mon,$yr,$wday,$yday,$isdst) = localtime;
+    $yr += 1900;
+    $mon++;
+    my $ts = sprintf("$yr-%02d-%02d__%02d-%02d-%02d", $mon, $mday, $hr, $min, $sec);
+}
+
+sub pairCurrent { my $card = shift; my $pair = shift; $card+$pair; }
+sub pairVoltage { my $card = shift; my $pair = shift; $card*100+$pair*10; }
+sub currentIsSmall { my $cur = shift; return $cur < 5 ? 1 : 0; }
+sub onCurrentWithinLimits { 1; }
+sub onVoltageWithinLimits { 1; }
+sub domIsCommunicating    { 1; }
+sub hadHardwareTimeout    { 0; }
+sub resetComstats { }
+sub comstat { 
+    my $card = shift; die unless defined $card;
+    my $pair = shift; die unless defined $pair;
+    my $dom  = shift; die unless defined $dom;
+    my $devfile = "/dev/dhc$card"."w$pair"."d$dom";
+    print <<EOCS;
+$devfile
+RX: 20214622B, MSGS=10000 NINQ=0 PKTS=78183 ACKS=39016
+    BADPKT=0 BADHDR=0 BADSEQ=153 NCTRL=0 NCI=0 NIC=0
+TX: 20214622B, MSGS=10000 NOUTQ=0 RESENT=1414 PKTS=79595 ACKS=39167
+    NACKQ=0 NRETXB=0 RETXB_BYTES=0 NRETXQ=0 NCTRL=0 NCI=2 NIC=1
+ 
+    NCONNECTS=1 NHDWRTIMEOUTS=0 OPEN=FALSE CONNECTED=true
+    RXFIFO=empty TXFIFO=almost empty,empty DOM_RXFIFO=notfull
+EOCS
+;
+}
+sub doDom;
+sub powerOnPair {
+    my $card = shift;
+    my $pair = shift;
+    return ("A"=>1,"B"=>1);
+}
+
+sub usage { return <<EOU;
+Usage: quadtool <card> 01 or <card> 23
+          01: first quad (wire pairs 0, 1)
+	  23: second quad (wire pairs 2, 3)
+
+EOU
+;
+}
+
+print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
+
+my $card = shift; 
+die usage unless defined $card && $card =~ /^\d+$/ && $card >= 0 && $card <= 7;
+
+my $pairPair = shift;
+die usage unless $pairPair eq "01" || $pairPair eq "23";
+my @pairs;
+if($pairPair eq "01") { @pairs = (0, 1); }
+if($pairPair eq "23") { @pairs = (2, 3); }
+
+my $now = timeString;
+my $testdir = "QUADTOOL__card$card"."_pair$pairPair"."_$now";
+my $logfile = "QUADTOOL.out";
+
+print "Creating $testdir... ";
+mkdir $testdir or die "Can't create $testdir: $!\n";
+print "OK.\n";
+print "Creating symlink latest_quadtool to $testdir... ";
+if(-e "latest_quadtool") {
+    unlink "latest_quadtool" or die "Can't unlink existing latest_quadtool: $!\n";
+}
+symlink($testdir, "latest_quadtool")
+    or die "Can't symlink $testdir"."->latest_quadtool: $!.\n";
+print "OK.\n";
+
+chdir $testdir || die "Can't chdir $testdir: $!\n";
+
+exit if fork;
+
+open LOG, ">$logfile" || die "Can't open $logfile: $!\n";
+my $ofh = select(LOG); $| = 1; select $ofh;
+
+sub logmsg        { my $m = shift; print LOG $m; }
+
+die "No DOR driver present!\n" unless driverPresent;
+logmsg "\n---------------------------------------------------\nCONFIGURATION:\n";
+logmsg "   Test start time: $now\n";
+logmsg "DOR driver version: ".driverVersion."\n";
+logmsg "          Hostname: ".hostName."\n";
+logmsg "          DOR card: $card\n";
+logmsg "        Wire pairs: ".(join ' ', @pairs)."\n";
+my %pairstat;
+my %domstat;
+
+foreach my $pair (@pairs) {
+    $pairstat{$pair} = "OK";
+    foreach my $dom ("A","B") {
+        $domstat{$pair}{$dom} = "OK";
+    }
+}
+
+sub failPair { 
+    my $pair = shift; die unless defined $pair;
+    $pairstat{$pair} = "BAD"; 
+    $domstat{$pair}{"A"} = "BAD";
+    $domstat{$pair}{"B"} = "BAD";
+}
+
+sub failDom {
+    my $pair = shift; die unless defined $pair;
+    my $dom  = shift; die unless defined $dom;
+    $domstat{$pair}{$dom} = "BAD";
+}
+
+sub iffyDom {
+    my $pair = shift; die unless defined $pair;
+    my $dom  = shift; die unless defined $dom;
+    $domstat{$pair}{$dom} = "POOR";
+}
+
+logmsg "\n---------------------------------------------------\nTEST DETAILS:\n";
+
+foreach my $pair (@pairs) {
+    $pairstat{$pair} = "OK";
+    if(!plugged($card, $pair)) {
+	logmsg "Pair $pair is NOT plugged in.\n";
+	failPair($pair);
+	next;
+    } else {
+	logmsg "Pair $pair is plugged in.\n";
+    }
+    my $current = pairCurrent($card,$pair);
+    logmsg "Pair $pair current (power off): $current mA: ";
+    if(!currentIsSmall($current)) {
+	logmsg "current with power off is too large!\n";
+	failPair($pair);
+	next;
+    } else {
+	logmsg "OK.\n";
+    }
+
+    # Reset comstats
+    resetComstats($card, $pair, "A");
+    resetComstats($card, $pair, "B");
+
+    logmsg "POWER ON pair $pair...\n";
+    my %isCom = powerOnPair($card, $pair);
+    $current  = pairCurrent($card, $pair);
+    my $voltage  = pairVoltage($card, $pair);
+    logmsg "Pair $pair current=$current mA, voltage=$voltage V\n";
+    # Check current, voltage
+    if(!onCurrentWithinLimits($current)) {
+	logmsg "Current is not in limits!\n";
+	failPair($pair);
+	next;
+    }
+    if(!onVoltageWithinLimits($voltage)) {
+	logmsg "Voltage is not in limits!\n";
+	failPair($pair);
+	next;
+    }
+    foreach my $dom ("A", "B") {
+	if(! $isCom{$dom}) {
+	    logmsg "Pair $pair DOM $dom is NOT communicating after power on.\n";
+	    failDom($pair,$dom);
+	    next;
+	} 
+	logmsg "Pair $pair DOM $dom is communicating after power on.\n";
+    }
+    # Next step - check again, look for hardware timeouts
+    sleep 1;
+    foreach my $dom ("A", "B") {
+        if(! domIsCommunicating($card, $pair, $dom)) {
+	    logmsg "Pair $pair DOM $dom did not communicate a short while after power on.\n";
+	    failDom($pair, $dom);
+	    next;
+	}
+	logmsg "Pair $pair DOM $dom is-communicating again after power on.\n";
+	if(hadHardwareTimeout($card, $pair, $dom)) {
+	    logmsg "DOM $dom had a hardware timeout!\n";
+	    failDom($pair, $dom);
+	    next;
+	}
+	logmsg "DOM $dom did not have a hardware timeout.\n";
+    }
+}
+
+foreach my $pair (@pairs) {
+    # Perform parallel comms test for each DOM.
+    if($pairstat{$pair} ne "BAD") {
+	foreach my $dom ("A", "B") { 
+	    if($domstat{$pair}{$dom} ne "BAD") {
+		my $domLog = "$pair$dom.log"; $domLog =~ tr/[A-Z]/[a-z]/;
+		logmsg "Launching comms quality tests on $pair$dom - see $domLog\n";
+		my $pid = fork;
+		if(!defined $pid) {
+		    logmsg "Fork failed on $pair $dom!\n";
+		    next;
+		}
+		if($pid == 0) { # Kid does stuff
+		    open DL, ">$domLog" or die "Can't open $domLog: $!\n";
+		    print DL "Testing card $card pair $pair DOM $dom....\n";
+		    doDom($card, $pair, $dom, $domLog);
+		    close DL;		    
+		    exit;
+		}
+	    }
+	}
+    }
+}
+
+wait;
+
+logmsg "\n---------------------------------------------------\nPASS/FAIL:\n";
+foreach my $pair (@pairs) {
+    logmsg "Card $card pair $pair: ";
+    my $stat = $pairstat{$pair}; 
+    if($stat eq "BAD") {
+	logmsg "BAD\n"; 
+    } else {
+	logmsg "\n";
+	foreach my $dom ("A","B") {
+	    logmsg "        DOM $dom: $domstat{$pair}{$dom}\n";
+	}
+    }
+}
+logmsg "Done.\n";
+close LOG;
+exit;
+
+sub doDom {
+    my $card = shift; die unless defined $card;
+    my $pair = shift; die unless defined $pair;
+    my $dom  = shift; die unless defined $dom;
+    my $log  = shift; die unless defined $log;
+    open DL, ">$log" or die "Can't open $log: $!\n";
+    close DL;
+}
+
+__END__
+
