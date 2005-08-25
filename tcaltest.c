@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.3 2005-03-15 21:58:25 jacobsen Exp $
+   $Id: tcaltest.c,v 1.4 2005-08-25 23:19:16 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -54,6 +54,23 @@ void randsleep(int usec) {
   usleep(j);
 }
 
+#define NS 512
+
+void dump_fpga(int icard) {
+  char fpgacmd[NS];
+  printf("Dumping FPGA proc file for card %d...\n", icard);
+  snprintf(fpgacmd, NS, "cat /proc/driver/domhub/card%d/fpga", icard);
+  system(fpgacmd);
+}
+
+void dump_comstat(int icard, int ipair, char cdom) {
+  char comstatcmd[NS];
+  printf("Dumping comstat proc file for card %d pair %d DOM %c...\n", icard, ipair, cdom);
+  snprintf(comstatcmd, NS, "cat /proc/driver/domhub/card%d/pair%d/dom%c/comstat",
+	   icard, ipair, cdom);
+  system(comstatcmd);
+}
+
 static int die=0;
 void argghhhh() { fprintf(stderr,"Caught signal, bye...\n"); die=1; }  
 
@@ -67,8 +84,8 @@ int main(int argc, char *argv[]) {
   unsigned long icalib;
   unsigned long tdelay = 1000000;
   int option_index = 0, argstart, argcount;
-#define NS 512
   char datafile[NS];
+
 #define MAXSKIP 1024
   char skipbuf[MAXSKIP];
   int icard, ipair;
@@ -196,7 +213,9 @@ int main(int argc, char *argv[]) {
 	  if(itry == MAX_TCAL_TRIES-1) {
 	    printf("cal(%ld) WRITE FAILED: TIMEOUT\n", icalib);
 	    fprintf(stderr,"Time calibration write timeout in trial %ld.\n", icalib);
-	    wrtimeouts++;
+	    dump_fpga(icard);
+	    dump_comstat(icard, ipair, cdom);
+	    exit(-1);
 	  } else {
 	    if(! no_show) {
 	      printf("cal(%ld) WRITE RETRY(%d)\n",icalib, itry);
@@ -220,7 +239,9 @@ int main(int argc, char *argv[]) {
 	if(itry == MAX_TCAL_TRIES-1) {
 	  printf("cal(%ld) READ FAILED: TIMEOUT!!!\n", icalib);
 	  fprintf(stderr,"Time calibration read timeout in trial %ld.\n", icalib);
-	  rdtimeouts++;
+	  dump_fpga(icard);
+	  dump_comstat(icard, ipair, cdom);
+	  exit(-1);
 	} else {
 	  if(! no_show) {
 	    fprintf(stderr,"cal(%ld) READ RETRY(%d)\n", icalib, itry);
@@ -231,6 +252,8 @@ int main(int argc, char *argv[]) {
       } else {
 	if(! tcal_data_ok(dor_clock, &tcalrec)) {
 	  fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
+	  dump_fpga(icard);
+	  dump_comstat(icard, ipair, cdom);
 	  exit(-1);
 	}
 	//printf("hdr: 0x%x.\n",(int) tcalrec.hdr);
