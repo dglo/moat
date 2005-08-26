@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.4 2005-08-25 23:19:16 jacobsen Exp $
+   $Id: tcaltest.c,v 1.5 2005-08-26 14:20:18 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -47,13 +47,6 @@ void show_tcalrec(FILE *fp, struct dh_tcalib_t *tcalrec);
 int getProcFile(char *filename, int len, char *arg, int * icard, int * ipair, char * cdom);
 int chkpower(int icard, int ipair);
 
-void randsleep(int usec) {
-  int j;
-  j=1+(int)(((float) usec)*rand()/(RAND_MAX+1.0));
-  pprintf("Delay %d, j %d.\n", usec, j);
-  usleep(j);
-}
-
 #define NS 512
 
 void dump_fpga(int icard) {
@@ -79,7 +72,7 @@ int main(int argc, char *argv[]) {
   char single[] = "single\n";
   int no_show = 0;
   int file, pid;
-  int MAX_TCAL_TRIES = 1000;
+  int MAX_TCAL_TRIES = 3000;
   int nread, nwritten, ntrials = 1, itry;
   unsigned long icalib;
   unsigned long tdelay = 1000000;
@@ -220,7 +213,7 @@ int main(int argc, char *argv[]) {
 	    if(! no_show) {
 	      printf("cal(%ld) WRITE RETRY(%d)\n",icalib, itry);
 	    }
-	    randsleep(2000);
+	    usleep(2000);
 	    continue;
 	  }
 	} else {
@@ -246,7 +239,7 @@ int main(int argc, char *argv[]) {
 	  if(! no_show) {
 	    fprintf(stderr,"cal(%ld) READ RETRY(%d)\n", icalib, itry);
 	  }
-	  randsleep(1000);
+	  usleep(1000);
 	  continue;
 	}
       } else {
