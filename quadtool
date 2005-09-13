@@ -5,12 +5,52 @@
 # Started: Fri Jul  1 13:40:54 2005
 
 package QUADTOOL;
-use strict;
 
-sub driverPresent { 1; }
-sub driverVersion { "simV02-07-00"; }
-sub hostName      { "simBluBook"; }
-sub plugged       { my $card = shift; my $pair = shift; return 1; }
+sub usage { return <<EOU;
+Usage: quadtool <card> 01 or <card> 23
+          01: first quad (wire pairs 0, 1)
+	  23: second quad (wire pairs 2, 3)
+Options:
+	  -t : Log results to terminal; don't background
+
+EOU
+;
+}
+
+
+use strict;
+use Getopt::Long;
+sub usage;
+my $interactive;
+my $help;
+GetOptions("help|h"          => \$help,
+	   "t"               => \$interactive) || die usage;
+die usage if $help;
+
+sub driverPresent { 
+    my $lsmod = `lsmod | grep dh`;
+    if($lsmod =~ /^dh\s+/) { return 1; }
+    return 0;
+}
+
+sub driverVersion { 
+    my $fvers = `fvers.pl 2>&1`;
+    if($fvers =~ /Driver (\S+)/) {
+	return $1;
+    } else {
+	return "UNKNOWN-NO-FVERS.PL";
+    }
+}
+
+sub hostName { my $h = `hostname 2>&1`; chomp $h; return $h; }
+
+sub plugged { 
+    my $card = shift; my $pair = shift; die unless defined $card && defined $pair;
+    my $pf = `cat /proc/driver/domhub/card$card/pair$pair/is-plugged`;
+    if($pf =~ /is plugged in/) { return 1; }
+    return 0;
+}
+
 sub timeString    {
     my ($sec,$min,$hr,$mday,$mon,$yr,$wday,$yday,$isdst) = localtime;
     $yr += 1900;
@@ -18,8 +58,28 @@ sub timeString    {
     my $ts = sprintf("$yr-%02d-%02d__%02d-%02d-%02d", $mon, $mday, $hr, $min, $sec);
 }
 
-sub pairCurrent { my $card = shift; my $pair = shift; $card+$pair; }
-sub pairVoltage { my $card = shift; my $pair = shift; $card*100+$pair*10; }
+sub pairCurrent { 
+    my $card = shift; my $pair = shift; 
+    die unless defined $card && defined $pair;
+    my $pf = `cat /proc/driver/domhub/card$card/pair$pair/current`;
+    if($pf =~ /current is (\d+) mA/) {
+	return $1;
+    } else {
+	return "UNKNOWN!";
+    }
+}
+
+sub pairVoltage { 
+    my $card = shift; my $pair = shift; 
+    die unless defined $card && defined $pair;
+    my $pf = `cat /proc/driver/domhub/card$card/pair$pair/voltage`;
+    if($pf =~ /voltage is (\S+) Volts/) {
+	return $1;
+    } else {
+	return "UNKNOWN!";
+    }
+}
+
 sub currentIsSmall { my $cur = shift; return $cur < 5 ? 1 : 0; }
 sub onCurrentWithinLimits { 1; }
 sub onVoltageWithinLimits { 1; }
@@ -50,15 +110,6 @@ sub powerOnPair {
     return ("A"=>1,"B"=>1);
 }
 
-sub usage { return <<EOU;
-Usage: quadtool <card> 01 or <card> 23
-          01: first quad (wire pairs 0, 1)
-	  23: second quad (wire pairs 2, 3)
-
-EOU
-;
-}
-
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 
 my $card = shift; 
@@ -87,14 +138,15 @@ print "OK.\n";
 
 chdir $testdir || die "Can't chdir $testdir: $!\n";
 
-exit if fork;
+exit if ! $interactive && fork;
 
 open LOG, ">$logfile" || die "Can't open $logfile: $!\n";
 my $ofh = select(LOG); $| = 1; select $ofh;
 
-sub logmsg        { my $m = shift; print LOG $m; }
+sub logmsg { my $m = shift; print LOG $m; if($interactive) { print $m; } }
+sub logdie { my $m = shift; print LOG $m; if($interactive) { die $m; } else { exit(-1); } }
 
-die "No DOR driver present!\n" unless driverPresent;
+logdie "No DOR driver present!\n" unless driverPresent;
 logmsg "\n---------------------------------------------------\nCONFIGURATION:\n";
 logmsg "   Test start time: $now\n";
 logmsg "DOR driver version: ".driverVersion."\n";
