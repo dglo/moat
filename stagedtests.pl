@@ -368,7 +368,7 @@ dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
 	    m|/proc/driver/domhub/card(\d+)/syncgps|;
 	    my $fout = "card$1_gps.out";
 	    my $chk = ($checkgps ? "-e $gpsskip,$gpsticks" : "");
-	    my $gpscmd = "/usr/local/bin/readgps -c15 -d $_ >&$fout $chk &";
+	    my $gpscmd = "/usr/local/bin/readgps -f -d $_ >&$fout $chk &";
 	    print "Running $gpscmd...\n";
 	    system $gpscmd;
 	}
@@ -787,11 +787,19 @@ sub check_log_files {
 	for(@pfs) {
 	    m|/proc/driver/domhub/card(\d+)/syncgps|;
 	    my $outfile = "card$1_gps.out";
-	    my $data = `tail -1 $outfile`;
+	    my $tail = `tail -1 $outfile`;
 # GPS 320:19:31:11 TQUAL(' ' exclnt.,<1us) DOR 0000000056bd138c
-	    if($data !~ /GPS.+?TQUAL.+?DOR/ || $data =~ /fail/i) {
-		print "$outfile: $data\n";
+	    if($tail !~ /GPS.+?TQUAL.+?DOR/ || $tail =~ /fail/i) {
+		print "$outfile: $tail\n";
 		$retval = 1;
+	    }
+	    my @grep = `grep -i 'bad dt' $outfile`;
+	    foreach my $line(@grep) {
+		chomp $line;
+		if($line =~ /bad dt/i) {
+		    print "$outfile: $line\n";
+		    $retval = 1;
+		}
 	    }
 	}
     }

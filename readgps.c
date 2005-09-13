@@ -37,8 +37,10 @@ int usage(void) {
 	  "Options:  -d       Show difference in DOR clock ticks\n"
 	  "          -o       One-shot (single readout)\n"
 	  "          -w <n>   Wait n seconds between readout cycles\n"
-	  "          -c <n>   Require 20M clock tick time diff. after\n"
-	  "                   the first n time strings.\n"
+	  "          -i <n>   Ignore first <n> time strings when checking\n"
+	  "                   delta-t values (default: 15)\n"
+	  "          -f       Flag deviations from 20M ticks of delta time\n"
+	  "          -c       REQUIRE 20M clock tick time difference.\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -81,20 +83,25 @@ int getcard(char *s, int max) {
 }
 
 int main(int argc, char ** argv) {
-  int dodiff   = 0;
-  int nretries = 0;
-  int oneshot  = 0;
-  int icard    = 9;
-  int waitval  = 1;
-  int skipdt, dodt = 0;
+  int dodiff     = 0;
+  int nretries   = 0;
+  int oneshot    = 0;
+  int icard      = 9;
+  int waitval    = 1;
+  int skipdt     = 15;
+  int dodt       = 0;
+  int doflag     = 0;
+  int had_bad_dt = 1;
   while(1) {
-    char c = getopt(argc, argv, "hdow:c:");
+    char c = getopt(argc, argv, "hdocfi:w:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
     case 'o': oneshot = 1; break;
     case 'w': waitval = atoi(optarg); break;
-    case 'c': dodt = 1; skipdt = atoi(optarg); break;
+    case 'i': skipdt = atoi(optarg); break;
+    case 'c': dodt = 1; break;
+    case 'f': doflag = 1; break;
     case 'h':
     default:
       exit(usage());
@@ -182,10 +189,14 @@ int main(int argc, char ** argv) {
     if(dodiff && tscount > 0) {
       fprintf(stdout," dt=%lu ticks", dt);
     }
+#   define WANT_DT 20000000UL
+    if((doflag || dodt) && tscount > skipdt && dt != WANT_DT) {
+      fprintf(stdout," BAD DT!!");
+      had_bad_dt = 1;
+    }
     fprintf(stdout,"\n"); 
     fflush(stdout);
 
-#   define WANT_DT 20000000UL
     if(dodt && tscount > skipdt && dt != WANT_DT) {
       fprintf(stderr,"readgps ERROR: %s: bad time difference dt=%lu, wanted %lu.\n",
 	      pfnam, dt, WANT_DT);
@@ -195,6 +206,9 @@ int main(int argc, char ** argv) {
     tlast = t;
     tscount++;
     if(oneshot || die) break;
+  }
+  if(die && had_bad_dt) {
+    fprintf(stderr,"readgps WARNING: %s: had one or more dt != %lu.\n", pfnam, WANT_DT);
   }
   return 0;
 } 
