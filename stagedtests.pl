@@ -318,7 +318,8 @@ dochoice("Do single [t]ime calib on each channel", 't', FALLTHRU_OK, sub {
 	if($tcalresult !~ /FAILED/) {
 	    print "$tprocfiles{$i} PASSED.\n";
 	} else {
-	    die "$tprocfiles{$i} FAILED!  Session text:\n$tcalresult\n\n";
+	    print "$tprocfiles{$i} FAILED!  Session text:\n$tcalresult\n\n";
+	    exit(-1);
 	}
     }
 }) unless $skiptcal;
