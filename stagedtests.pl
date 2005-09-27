@@ -33,6 +33,7 @@ my $fixsinglepkt;
 my $help          = 0;
 my $dorfreq;
 my $useconfigboot = 0;
+my $usedomapp     = 0;
 my $timedrun;
 my $probe         = 0;
 my $savetcal      = 0;
@@ -66,9 +67,8 @@ Usage: $0 [st.in]
 	  [-o|-loopback]       Tweaks to support loopback mode firmware:
 	                         - don't wait for ">" from iceboot
                                  - don't softboot DOMs
-	  [-b|-useconfigboot]  Use echo-mode-cb rather than echo-mode; 
-                               this selects configboot firmware for echo test
-                               (if supported by your DOM software release)
+	  [-b|-useconfigboot]  Use configboot firmware for echo test
+	  [-a|-usedomapp]      Use domapp firmware for echo test
 st.in should be a file formatted e.g. as:
 0 0 A
 0 0 B
@@ -105,6 +105,7 @@ GetOptions("help|h"          => \$help,
 	   "savetcal|v"      => \$savetcal,
 	   "w"               => \$useReadwrite,
 	   "useconfigboot|b" => \$useconfigboot,
+	   "usedomapp|a"     => \$usedomapp,
 	   "skipkbcheck|i"   => \$skipkbchk,
 	   "loopback|o"      => \$loopback,
 	   "skiptcal|x"      => \$skiptcal) || die usage;
@@ -705,9 +706,12 @@ sub echo_mode_all {
     for($i=0; $i<$ndoms; $i++) {
         $seprecmd .= $card{$i}.$pair{$i}.$dom{$i}." ";
     }
-    if($useconfigboot) {
-	# Start configboot firmware on DOM
-	my $emstr = "s\\\"\\\ configboot.sbi\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\>";
+    my $fwname;
+    $fwname = "configboot.sbi" if $useconfigboot;
+    $fwname = "domapp.sbi"     if $usedomapp;
+    if($useconfigboot || $usedomapp) {
+	# Start configboot or domapp firmware on DOM
+	my $emstr = "s\\\"\\\ $fwname\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\>";
 	my $secmd = $seprecmd . $emstr;
 	print "$secmd\n";
 	my $tf = "/tmp/st$$"."_se.tmp";
@@ -715,7 +719,7 @@ sub echo_mode_all {
 	my $result = `cat $tf`;
 	unlink $tf;
 	if($result !~ /success/i) {
-	    print "Load of configboot firmware failed: $result.  Sorry.\n";
+	    print "Load of alternate firmware failed: $result.  Sorry.\n";
 	    print "stagedtests FAILURE.\n";
 	    exit;
 	}
