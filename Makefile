@@ -34,6 +34,7 @@ install:
 	install watchcomms     $(INSTALL_BIN)
 	install moat           $(INSTALL_BIN)
 	install moat14         $(INSTALL_BIN)
+	install shortmoat      $(INSTALL_BIN)
 	install stagedtests.pl $(INSTALL_BIN)
 	install se.pl          $(INSTALL_BIN)
 	install sb.pl          $(INSTALL_BIN)
