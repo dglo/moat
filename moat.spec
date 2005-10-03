@@ -35,6 +35,7 @@ install rndpkt ${RPM_BUILD_ROOT}/usr/local/bin
 install watchcomms ${RPM_BUILD_ROOT}/usr/local/bin
 install moat ${RPM_BUILD_ROOT}/usr/local/bin
 install moat14 ${RPM_BUILD_ROOT}/usr/local/bin
+install shortmoat ${RPM_BUILD_ROOT}/usr/local/bin
 install stagedtests.pl ${RPM_BUILD_ROOT}/usr/local/bin
 install se.pl ${RPM_BUILD_ROOT}/usr/local/bin
 install sb.pl ${RPM_BUILD_ROOT}/usr/local/bin
@@ -55,6 +56,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/local/bin/watchcomms
 /usr/local/bin/moat
 /usr/local/bin/moat14
+/usr/local/bin/shortmoat
 /usr/local/bin/stagedtests.pl
 /usr/local/bin/se.pl
 /usr/local/bin/sb.pl

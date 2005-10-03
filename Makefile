@@ -3,13 +3,16 @@ INSTALL_BIN  = $(DESTDIR)/bin
 INSTALL_CONF = $(DESTDIR)/share
 
 all:
-	make readwrite dtest tcaltest dtest readgps rndpkt
+	make readwrite dtest tcaltest dtest readgps rndpkt singleopen
 
 readwrite: readwrite.c
 	gcc -Wall -o readwrite readwrite.c
 
 tcaltest: tcaltest.c 
 	gcc -Wall -o tcaltest tcaltest.c
+
+singleopen: singleopen.c
+	gcc -Wall -o singleopen singleopen.c
 
 dtest: dtest.c
 	gcc -Wall -lcurses -o dtest dtest.c
@@ -27,6 +30,7 @@ install:
 	install moat-version   $(INSTALL_CONF)
 	install readwrite      $(INSTALL_BIN)
 	install dtest          $(INSTALL_BIN)
+	install singleopen     $(INSTALL_BIN)
 	install tcaltest       $(INSTALL_BIN)
 	install readgps        $(INSTALL_BIN)
 	install echo-loop      $(INSTALL_BIN)
@@ -34,6 +38,7 @@ install:
 	install watchcomms     $(INSTALL_BIN)
 	install moat           $(INSTALL_BIN)
 	install moat14         $(INSTALL_BIN)
+	install shortmoat      $(INSTALL_BIN)
 	install stagedtests.pl $(INSTALL_BIN)
 	install se.pl          $(INSTALL_BIN)
 	install sb.pl          $(INSTALL_BIN)

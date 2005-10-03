@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.14 2005-08-11 19:05:27 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.17 2005-10-03 21:37:38 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -13,9 +13,10 @@ use Getopt::Long;
 sub off_all; sub on_all;
 sub check_for_running_processes; sub kill_running_processes;
 
-my $relsecs   = 8 * 3600; # 8 hrs
-my $cbsecs    = 10 * 60;  # 10 min
-my $savtsecs  = 0;
+my $relsecs    = 120; # 2 min
+my $cbsecs     = 120; # 2 min
+my $savtsecs   = 120; # 2 min
+my $domappsecs = 120; # 2 min
 my $skipmjb;
 my $fixsingle;
 my $loopback;
@@ -36,10 +37,12 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
            [-w]                 Perform echotests using readwrite (default: echo-test)
 	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
 	                        (default $cbsecs)
-	   [-r|-relsecs]        Number of seconds for "release" stagedtests runs
-	                        (default $relsecs)
+	   [-r|-relsecs]        Number of seconds for "release" stagedtests run
+	                        versus stf.sbi (default $relsecs)
 	   [-t|-savetsecs]      Number of seconds for same, saving tcal data
 	                        (default $savtsecs)
+	   [-a|-domappsecs]     Number of seconds for "release" stagedtests runs
+	                        versus domapp.sbi (default $domappsecs)
            [-v]                 Show MOAT release version
 
 EOF
@@ -67,6 +70,7 @@ GetOptions("help|h"          => \$help,
 	   "w"               => \$useReadwrite,
 	   "loopback|X"      => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
+	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
 	   "n=i"             => \$n) || die usage;
@@ -194,15 +198,15 @@ for(my $iter=0; $iter<$n; $iter++) {
     }
 
     if($savtsecs > 0) {
-	#### stagedtests of release firmware as above, but save tcalib data
+	#### stagedtests of domapp firmware, saving tcalib data
 	my $rest = "save_tcal_stagedtests";
 	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
-	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -a -v -d $dorfreq $fsarg $gpsflag "
 	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"")
-	    .($useReadwrite?" -w":"");
+	    .($useReadwrite?" -w":"")." -a";
 	print LOG "\n\nMOAT: Starting $stcmd\n";
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
@@ -217,7 +221,7 @@ for(my $iter=0; $iter<$n; $iter++) {
     }
 
     if($relsecs > 0) {
-	#### stagedtests (echo test + tcaltest) of release firmware
+	#### stagedtests (echo test + tcaltest) of iceboot firmware
 	my $rest = "release_stagedtests";
 	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
@@ -237,6 +241,29 @@ for(my $iter=0; $iter<$n; $iter++) {
 	    chdir "..";
 	    last;
 	}
+    }
+
+    if($domappsecs > 0) {
+	#### stagedtests (echo test + tcaltest) of domapp firmware
+	my $rest = "domapp_stagedtests";
+	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
+        chdir $rest || mydie "Can't chdir $rest: $!\n";
+        unlink "st.out" || mydie "Can't unlink st.out: $!\n";
+        open ST, ">st.in"; print ST $st_in; close ST;
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $domappsecs -d $dorfreq $fsarg $gpsflag -a "
+            .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"")
+            .($useReadwrite?" -w":"");
+        print LOG "\n\nMOAT: Starting $stcmd\n";
+        system "$stcmd 2>&1 > st.out";
+        my $stresult = `tail -1 st.out`;
+        print LOG $stresult;
+        chdir ".." || mydie "Can't chdir ..: $!\n";
+        if($stresult !~ /SUCCESS/) {
+            print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
+            $have_failure = 1;
+            chdir "..";
+            last;
+        }
     }
 
     if(!$skipmjb && $cmdline_doms == 0) {
@@ -260,28 +287,6 @@ for(my $iter=0; $iter<$n; $iter++) {
 	    last;
 	}
     }
-
-
-#     #### Do a short newpkttest for a few minutes just to make sure
-#     #### softboot and flow control are ok
-
-#     print LOG "\n\nMOAT: Powering DOMs off, then on...\n";
-#     off_all;
-#     on_all;
-#     my $newp = "newpkt_test";
-#     mkdir $newp || mydie "Can't mkdir $newp: $!\n";
-#     chdir $newp || mydie "Can't chdir $newp: $!\n";
-#     my $newpktcmd = "/usr/local/bin/newpkttest.pl -p -n 1";
-#     print LOG "\n\nMOAT: Starting $newpktcmd\n";
-#     my $npresult = `$newpktcmd 2>&1`;
-#     print LOG $npresult;
-#     if($npresult !~ /SUCCESS/) {
-# 	print LOG "\n\nnewpkttest FAILED on iteration $iter.\n";
-# 	$have_failure = 1;
-#         last;
-#     }
-#
-#    chdir ".." || mydie "Can't chdir ..: $!\n";
 
     #### Done with tests this iteration
     chdir ".." || mydie "Can't chdir ..: $!\n";

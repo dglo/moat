@@ -1,11 +1,11 @@
 #!/usr/bin/perl
 
-# moat14
+# shortmoat
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Sun Jan 16 16:21:24 2005
 
 use strict;
-my $cmd = "moat -d 10 -c 600 -g -r 3600 -t 3600 -a 21600";
+my $cmd = "moat -d 10 -c 120 -r 120 -t 120 -a 120 -s -g";
 print "$cmd\n";
 exec $cmd;
 __END__
