@@ -11,7 +11,6 @@ V00-00-13  9/27/05
 - Change default times to 2 minutes each (configboot, domapp, stf, domapp
   saving tcal data)
 - Add 'shortmoat' script for running short tests in each of the four modes
-- Fix bug in postinstall of RPM so that dmt symlink is created
 
 ============================================================================
 
