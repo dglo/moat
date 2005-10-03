@@ -5,10 +5,12 @@ Requires: domhub-tools 100 or greater
 ============================================================================
 
 V00-00-13  9/27/05
-- Add mode where we check domapp FPGA; save_tcal_stagedtests uses domapp FPGA
-  now, rather than STF FPGA
+- Add so-called 'domapp_stagedtests' mode to moat where, if available, the
+  domapp FPGA is tested for comms, rather than the test FPGA.  
+  Save_tcal_stagedtests uses the domapp FPGA, if available.
 - Change default times to 2 minutes each (configboot, domapp, stf, domapp
   saving tcal data)
+- Add 'shortmoat' script for running short tests in each of the four modes
 
 ============================================================================
 
