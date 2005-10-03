@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.15 2005-09-27 20:45:45 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.16 2005-10-03 21:31:14 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -70,7 +70,7 @@ GetOptions("help|h"          => \$help,
 	   "w"               => \$useReadwrite,
 	   "loopback|X"      => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
-	   "domappsecs|a"    => \$domappsecs,
+	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
 	   "n=i"             => \$n) || die usage;
@@ -250,7 +250,7 @@ for(my $iter=0; $iter<$n; $iter++) {
         chdir $rest || mydie "Can't chdir $rest: $!\n";
         unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
-	my $stcmd = "/usr/local/bin/stagedtests.pl -t $relsecs -d $dorfreq $fsarg $gpsflag -a "
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $domappsecs -d $dorfreq $fsarg $gpsflag -a "
             .(defined $st_in ? "st.in" : "-p").($loopback?" -x -X":"").($skipkbchk?" -i":"")
             .($useReadwrite?" -w":"");
         print LOG "\n\nMOAT: Starting $stcmd\n";

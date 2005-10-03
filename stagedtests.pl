@@ -205,7 +205,7 @@ if($probe) {
 	   next;
        }
 	if($str !~ /(\d+) (\d+) (A|B)/) {
-	    print "Bad DOM specifier in $inputfile: $!\n";
+	    print "Bad DOM specifier in $inputfile: '$str'\n";
 	    exit;
 	} else {
 	    $card{$i} = $1;
