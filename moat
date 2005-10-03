@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.16 2005-10-03 21:31:14 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.17 2005-10-03 21:37:38 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -204,7 +204,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
 	unlink "st.out" || mydie "Can't unlink st.out: $!\n";
         open ST, ">st.in"; print ST $st_in; close ST;
-	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -v -d $dorfreq $fsarg $gpsflag "
+	my $stcmd = "/usr/local/bin/stagedtests.pl -t $savtsecs -a -v -d $dorfreq $fsarg $gpsflag "
 	    .(defined $st_in ? "st.in" : "-p").($loopback?" -X":"").($skipkbchk?" -i":"")
 	    .($useReadwrite?" -w":"")." -a";
 	print LOG "\n\nMOAT: Starting $stcmd\n";
@@ -221,7 +221,7 @@ for(my $iter=0; $iter<$n; $iter++) {
     }
 
     if($relsecs > 0) {
-	#### stagedtests (echo test + tcaltest) of release firmware
+	#### stagedtests (echo test + tcaltest) of iceboot firmware
 	my $rest = "release_stagedtests";
 	mkdir $rest || mydie "Can't mkdir $rest: $!\n";
 	chdir $rest || mydie "Can't chdir $rest: $!\n";
