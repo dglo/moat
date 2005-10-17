@@ -91,7 +91,7 @@ int main(int argc, char ** argv) {
   int skipdt     = 15;
   int dodt       = 0;
   int doflag     = 0;
-  int had_bad_dt = 1;
+  int had_bad_dt = 0;
   while(1) {
     char c = getopt(argc, argv, "hdocfi:w:");
     if (c == -1) break;
