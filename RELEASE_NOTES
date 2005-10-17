@@ -2,6 +2,17 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 100 or greater
 
+
+
+
+
+
+NEXT RELEASE
+- Fixed spurious readgps error message on control-C 
+
+
+
+
 ============================================================================
 
 V00-00-13  9/27/05
