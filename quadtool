@@ -39,8 +39,8 @@ my $numConfigBootPromptTests = minscale(100);
 my $numIceBootSoftBootTests  = minscale(20);
 my $numEchoMessagesPerFW     = minscale(3000);
 my $maxICCIs                 = 50;
-my $maxRETX                  = 30;
-my $maxBADSEQ                = 30;
+my $maxRETX                  = 100;
+my $maxBADSEQ                = 100;
 
 sub checkForRunning;
 sub driverPresent;
