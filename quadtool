@@ -12,6 +12,7 @@ Usage: quadtool <card> 01 or <card> 23
 	  23: second quad (wire pairs 2, 3)
 Options:
 	  -t : Log results to terminal; don't background
+          -s (x%) : Scale duration by x%.  Default: 100% (~15min)
 
 EOU
 ;
@@ -21,22 +22,27 @@ EOU
 use Fcntl;
 use strict;
 
-print "FIXME: tweak values\n";
-
-my $numConfigBootPromptTests = 10;  # 100
-my $numOpenTests             = 10;  # 100
-my $numIceBootSoftBootTests  = 2;   # 100
-my $numEchoMessagesPerFW  = 10;  # 1000
-my $maxICCIs                 = 100*$numOpenTests;
-my $maxCBRETX                = 0;
-my $maxCBBADSEQ              = 0;
 
 use Getopt::Long;
 my $interactive;
 my $help;
+my $scale = 100;
 GetOptions("help|h"          => \$help,
+           "scale|s=i"       => \$scale,
 	   "t"               => \$interactive) || die usage;
 die usage if $help;
+
+print "FIXME: tweak values\n";
+
+my $scalefactor = $scale/100;
+sub minscale { my $v = (shift)*($scalefactor); return 1 if $v < 1; return $v; }
+my $numOpenTests             = minscale(100);
+my $numConfigBootPromptTests = minscale(100);
+my $numIceBootSoftBootTests  = minscale(20);
+my $numEchoMessagesPerFW     = minscale(3000);
+my $maxICCIs                 = 50;
+my $maxRETX                  = 30;
+my $maxBADSEQ                = 30;
 
 sub checkForRunning;
 sub driverPresent;
@@ -66,7 +72,7 @@ sub showDomFailures;
 sub haveDOR { my $c=shift; return 0 unless -d "/proc/driver/domhub/card$c"; return 1; }
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
-checkForRunning;
+# checkForRunning; <-- SKIP this - we already check for power-on.
 
 my $card = shift; 
 die usage unless defined $card && $card =~ /^\d+$/ && $card >= 0 && $card <= 7;
@@ -181,11 +187,16 @@ foreach my $pair (@pairs) {
     if($pairstat{$pair} ne "BAD") {
 	logmsg "Pair $pair PWR ON... ";
 	my %isCom = powerOnPair($card, $pair);
+	my $voltage;
 	my $current  = pairCurrent($card, $pair);
-	my $voltage  = pairVoltage($card, $pair);
-	logmsg "$current mA, $voltage V... ";
+	if(dorRev($card) > 0) {
+	    $voltage = pairVoltage($card, $pair)." V";
+	} else {
+	    $voltage = "(no voltage avail. for Rev 0)";
+	}
+	logmsg "$current mA, $voltage... ";
 	# Check current, voltage
-	if(!onCurrentVoltageWithinLimits($card, $pair)) {
+	if(dorRev($card) > 0 && !onCurrentVoltageWithinLimits($card, $pair)) {
 	    logmsg "\nCurrent or voltage is not in limits!\n"
 		.  `cat /proc/driver/domhub/card$card/pair$pair/pwr_check`;
 	    failPair($pair);
@@ -310,14 +321,49 @@ sub doDom {
     my $domStatus = $domstat{$pair}{$dom};
     print DL "Starting comms. tests on $card$pair$dom...\n" if $interactive;
 
+    my $opensum    = 0;
+    my $packetloss = 0;
+
+    sub showstats {
+	my $what    = shift;
+	my $mxicci  = shift;
+	my $nRXIC   = nRXIC($card,$pair,$dom);
+	my $nRXCI   = nRXCI($card,$pair,$dom);
+	my $nTXIC   = nTXIC($card,$pair,$dom);
+	my $nTXCI   = nTXCI($card,$pair,$dom);
+	$opensum   += $nRXIC + $nRXCI + $nTXIC + $nTXCI;
+	my $nretx   = nRESENT($card, $pair, $dom);
+	my $nbadseq = nBADSEQ($card, $pair, $dom);
+	$packetloss += $nretx + $nbadseq;
+	printf DL "$card$pair$dom %25s: "
+	    .    "RX ICs=%02d RX CIs=%02d TX ICs=%02d "
+	    .    "TX CIs=%02d RESENT=%02d BADSEQ=%02d\n", 
+	         $what, $nRXIC, $nRXCI, $nTXIC, $nTXCI, $nretx, $nbadseq;
+	
+	if($nretx > $maxRETX || $nbadseq > $maxBADSEQ) {
+	    print DL "\tHigh bad packet count!\n";
+	    $domStatus = "POOR";
+	}
+	if($nRXIC > $mxicci || $nRXCI > $mxicci ||
+	   $nTXIC > $mxicci || $nTXCI > $mxicci) {
+	    print DL "\tHigh IC/CI count!\n";
+	    $domStatus = "POOR";
+	}
+	if(hadHardwareTimeout($card,$pair,$dom)) {
+	    print DL "\tHardware timeout!\n";
+	    print DL comstat($card,$pair,$dom);
+	    print DL fpga($card);
+	    $domStatus = "BAD";
+	} 
+    } 
+
     # Perform multiple open tests
-    logmsg "$card$pair$dom open tests...\n";
+    logmsg "$card$pair$dom performing multiple open tests...\n";
     resetComstats($card, $pair, $dom);
     foreach my $trial (0..$numOpenTests-1) {
 	my $domfile = "/dev/dhc$card"."w$pair"."d$dom";
 	logdie "DOM /dev file $domfile not found!\n" unless -e $domfile;
-	if(sysopen(DOM, $domfile, O_RDWR)) {
-	} else {
+	if(!sysopen(DOM, $domfile, O_RDWR)) {
 	    print DL "Open $trial FAILED ($!)\n";
 	    print DL comstat($card,$pair,$dom);
 	    print DL fpga($card);
@@ -328,33 +374,13 @@ sub doDom {
     }
 
     if($domStatus ne "BAD") {
-	print DL "DOM open test succeeded ($numOpenTests trials).\n";
-	print DL "Check CI/IC transmit/receive counts: ";
-	my $nRXIC = nRXIC($card,$pair,$dom);
-	my $nRXCI = nRXCI($card,$pair,$dom);
-	my $nTXIC = nTXIC($card,$pair,$dom);
-	my $nTXCI = nTXCI($card,$pair,$dom);
-
-	print DL "RX ICs=$nRXIC RX CIs=$nRXCI TX ICs=$nTXIC TX CIs=$nTXCI\n";
-	if($nRXIC > $maxICCIs || $nRXCI > $maxICCIs || 
-	   $nTXIC > $maxICCIs || $nTXCI > $maxICCIs) {
-	    print DL "\nCard $card pair $pair DOM $dom: high IC/CI count!\n";
-	    $domStatus = "POOR";
-	}
-	
-	if(hadHardwareTimeout($card,$pair,$dom)) {
-	    print DL "\nCard $card pair $pair DOM $dom: HARDWARE TIMEOUT!\n";
-	    $domStatus = "BAD";
-	} else {
-	    print DL "No hardware timeout after open test.\n";
-	}
-
+	showstats("open test ($numOpenTests trials)", $maxICCIs*$numOpenTests);
     }
 
     resetComstats($card, $pair, $dom);
     # Run configboot tests and check for correct response
     if($domStatus ne "BAD") {
-	logmsg "$card$pair$dom first configboot tests...\n" if $interactive;
+	logmsg "$card$pair$dom configboot prompt tests...\n" if $interactive;
 	foreach my $trial (0..$numConfigBootPromptTests-1) {
 	    # Perform configboot CR test
 	    my $prompt = "#";
@@ -374,29 +400,14 @@ sub doDom {
 
     # Check RESENT and BADSEQ after configboot tests
     if($domStatus ne "BAD") {
-	my $nretx   = nRESENT($card, $pair, $dom);
-	my $nbadseq = nBADSEQ($card, $pair, $dom);
-	print DL "After configboot prompt tests, RESENT=$nretx BADSEQ=$nbadseq\n";
-	if($nretx > $maxCBRETX || $nbadseq > $maxCBBADSEQ) {
-	    print DL "\nCard $card pair $pair DOM $dom: RESENT or BADSEQ too high!\n";
-	    $domStatus = "POOR";
-	}
-
-        if(hadHardwareTimeout($card,$pair,$dom)) {
-            print DL "\nCard $card pair $pair DOM $dom: HARDWARE TIMEOUT!\n";
-	    print DL comstat($card,$pair,$dom);
-	    print DL fpga($card);
-            $domStatus = "BAD";
-        } else {
-            print DL "No hardware timeout after configboot prompt test.\n";
-        }
+	showstats("cbtests",$maxICCIs * $numConfigBootPromptTests);
     }
 
     my $domtag = "NOT AVAILABLE";
     # Put DOMs in Iceboot and try softboot
     resetComstats($card, $pair, $dom);
     if($domStatus ne "BAD") {
-	logmsg "$card$pair$dom first Iceboot/softboot tests...\n" if $interactive;
+	logmsg "$card$pair$dom Iceboot/softboot tests...\n" if $interactive;
 
 	# First time through, configboot->iceboot...
 	my $cmd = "se.pl $card$pair$dom r .+\\\> 2>&1";
@@ -443,32 +454,7 @@ sub doDom {
     # After iceboot/softboot tests, check hardware timeouts, IC/CI, RESENT and BADSEQ
 
     if($domStatus ne "BAD") {
-
-        if(hadHardwareTimeout($card,$pair,$dom)) {
-            print DL "\nCard $card pair $pair DOM $dom: HARDWARE TIMEOUT!\n";
-            $domStatus = "BAD";
-        } else {
-            print DL "No hardware timeout after Iceboot/Softboot test.\n";
-
-	    my $nRXIC = nRXIC($card,$pair,$dom);
-	    my $nRXCI = nRXCI($card,$pair,$dom);
-	    my $nTXIC = nTXIC($card,$pair,$dom);
-	    my $nTXCI = nTXCI($card,$pair,$dom);
-	    print DL "RX ICs=$nRXIC RX CIs=$nRXCI TX ICs=$nTXIC TX CIs=$nTXCI\n";
-	    if($nRXIC > $maxICCIs || $nRXCI > $maxICCIs ||
-	       $nTXIC > $maxICCIs || $nTXCI > $maxICCIs) {
-		print DL "\nCard $card pair $pair DOM $dom: high IC/CI count!\n";
-		$domStatus = "POOR";
-	    }
-
-	    my $nretx   = nRESENT($card, $pair, $dom);
-	    my $nbadseq = nBADSEQ($card, $pair, $dom);
-	    print DL "After Iceboot/softboot tests, RESENT=$nretx BADSEQ=$nbadseq\n";
-	    if($nretx > $maxCBRETX || $nbadseq > $maxCBBADSEQ) {
-		print DL "\nCard $card pair $pair DOM $dom: RESENT or BADSEQ too high!\n";
-		$domStatus = "POOR";
-	    }
-	}
+	showstats ("iceboot/softboot test", $maxICCIs * $numIceBootSoftBootTests);
     }
 
     # Perform cyclic echo tests for each DOM...
@@ -527,43 +513,14 @@ sub doDom {
 		print DL fpga($card);
 		$domStatus = "BAD";
 		last;
-	    } else {
-		print DL "Echotest($numEchoMessagesPerFW msgs) vs. $sbi OK.\n";
 	    }
 	    
-	    # Look for hardware timeouts
-	    if(hadHardwareTimeout($card,$pair,$dom)) {
-		print DL "\necho $sbi: Card $card pair $pair DOM $dom: HARDWARE TIMEOUT!\n";
-		$domStatus = "BAD";
-		last;
-	    } else {
-		print DL "echo $sbi: no hardware timeout\n";
-	    }
-
-	    # Count IC/CI:
-	    my $nRXIC = nRXIC($card,$pair,$dom);
-            my $nRXCI = nRXCI($card,$pair,$dom);
-            my $nTXIC = nTXIC($card,$pair,$dom);
-            my $nTXCI = nTXCI($card,$pair,$dom);
-            print DL "echo $sbi: RX ICs=$nRXIC RX CIs=$nRXCI TX ICs=$nTXIC TX CIs=$nTXCI\n";
-            if($nRXIC > $maxICCIs || $nRXCI > $maxICCIs ||
-               $nTXIC > $maxICCIs || $nTXCI > $maxICCIs) {
-                print DL "\nCard $card pair $pair DOM $dom: high IC/CI count!\n";
-                $domStatus = "POOR";
-            }
-
-	    # Count lost packets:
-
-            my $nretx   = nRESENT($card, $pair, $dom);
-            my $nbadseq = nBADSEQ($card, $pair, $dom);
-            print DL "echo $sbi, RESENT=$nretx BADSEQ=$nbadseq\n";
-            if($nretx > $maxCBRETX || $nbadseq > $maxCBBADSEQ) {
-                print DL "\nCard $card pair $pair DOM $dom: RESENT or BADSEQ too high!\n";
-                $domStatus = "POOR";
-            }
-
+	    showstats("$sbi echotest", $maxICCIs);
 	}
     }
+
+    print DL "Sum of IC/CI for all operations: $opensum\n";
+    print DL "Sum of lost packets for all operations: $packetloss\n";
 
     # Note status changes so parent process can collect results
     print DL "DOM status after per-DOM tests is $domStatus\n";
@@ -690,6 +647,13 @@ sub resetPowerLimitChecks {
     close PF;
 }
 
+
+sub dorRev {
+    my $card = shift; die unless defined $card;
+    my $pf = `cat /proc/driver/domhub/card$card/rev`;
+    chomp $pf;
+    return $pf;
+}
 
 sub onCurrentVoltageWithinLimits {
     my $card = shift; die unless defined $card;
