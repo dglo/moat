@@ -96,6 +96,7 @@ print "Creating symlink latest_quadtool to $testdir... ";
 if(-e "latest_quadtool") {
     unlink "latest_quadtool" or die "Can't unlink existing latest_quadtool: $!\n";
 }
+unlink "latest_quadtool";
 symlink($testdir, "latest_quadtool")
     or die "Can't symlink $testdir"."->latest_quadtool: $!.\n";
 print "OK.\n";
