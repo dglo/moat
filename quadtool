@@ -32,8 +32,6 @@ GetOptions("help|h"          => \$help,
 	   "t"               => \$interactive) || die usage;
 die usage if $help;
 
-print "FIXME: tweak values\n";
-
 my $scalefactor = $scale/100;
 sub minscale { my $v = (shift)*($scalefactor); return 1 if $v < 1; return $v; }
 my $numOpenTests             = minscale(100);
