@@ -2,7 +2,7 @@
 
 #
 # John Jacobsen, John Jacobsen IT Services, for LBNL/IceCube
-# $Id: se.pl,v 1.2 2005-06-28 17:36:54 jacobsen Exp $
+# $Id: se.pl,v 1.3 2005-10-25 17:26:04 jacobsen Exp $
 
 use Fcntl;
 use strict;
@@ -143,8 +143,12 @@ if($todo == 0) {
 } else {
     print "FAILURE: $todo DOMs did not give expected reply:\n";
     foreach my $fname(@domdevs) {
-	if(! $datadone{$fname}) { 
-	    print "\t$fname (got $dataread{$fname})\n";
+	if(! $datadone{$fname}) {
+	    if($dataread{$fname} eq "") {
+		print "\t$fname got NO DATA.\n"; 
+	    } else {
+		print "\t$fname (got $dataread{$fname})\n";
+	    }
 	}
     }
 }
