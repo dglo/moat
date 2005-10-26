@@ -665,6 +665,10 @@ sub resetPowerLimitChecks {
     open (PF, ">$pf") || die "Can't open $pf: $!\n";
     print PF "reset";
     close PF;
+    $pf = "/proc/driver/domhub/card$card/pwr_check";
+    open (PF, ">$pf") || die "Can't open $pf: $!\n";
+    print PF "reset";
+    close PF;
 }
 
 
