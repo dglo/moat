@@ -224,7 +224,6 @@ foreach my $pair (@pairs) {
 		logmsg "$card$pair$dom is-communicating\n";
 	    }
 	}
-	logmsg "domreason is ".$domreason{$pair}{"A"}."\n";
 	# Next step - check again, look for hardware timeouts
 	sleep 1;
 	foreach my $dom ("A", "B") {
