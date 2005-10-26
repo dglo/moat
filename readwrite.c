@@ -1,7 +1,7 @@
 /* readwrite.c
    John Jacobsen, jacobsen@npxdesigns.com, for LBNL/IceCube
    Started March, 2003
-   $Id: readwrite.c,v 1.1 2005-03-14 23:25:41 jacobsen Exp $
+   $Id: readwrite.c,v 1.2 2005-10-25 17:25:43 jacobsen Exp $
 
    Loopback test program for the DOR/DOM - 
    Send messages to DOM and get contents back; check to make
@@ -413,7 +413,10 @@ int main(int argc, char *argv[]) {
 	    //fprintf(stderr, "%s: Data rate of %2.6lf kB/sec.\n", filename, kbps);
 	    //fprintf(stderr, "%s: Got %ld messages.\n", filename, nummsgs);
 	  }
-	  if(msgs_ok >= nummsgs) exit(0);
+	  if(msgs_ok >= nummsgs) {
+	    fprintf(stderr, "%s: SUCCESS.\n", filename);
+	    exit(0);
+	  }
 	  if(flowctrl) break; /* Do one read only before stuffing write */
 	}
       } 
@@ -583,7 +586,8 @@ int main(int argc, char *argv[]) {
 	  length_errors, contents_errors, readtimeouts);
   fprintf(stderr,"\nClosing file.\n");
   close(filep);
-  fprintf(stderr,"Done.\n");
+  fprintf(stderr, "SUCCESS\n");
+  fprintf(stderr, "Done.\n");
   
   return 0;
 }

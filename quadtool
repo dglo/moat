@@ -12,6 +12,7 @@ Usage: quadtool <card> 01 or <card> 23
 	  23: second quad (wire pairs 2, 3)
 Options:
 	  -t : Log results to terminal; don't background
+          -s (x%) : Scale duration by x%.  Default: 100% (~15min)
 
 EOU
 ;
@@ -21,14 +22,25 @@ EOU
 use Fcntl;
 use strict;
 
-my $numOpenTests = 10;
 
 use Getopt::Long;
 my $interactive;
 my $help;
+my $scale = 100;
 GetOptions("help|h"          => \$help,
+           "scale|s=i"       => \$scale,
 	   "t"               => \$interactive) || die usage;
 die usage if $help;
+
+my $scalefactor = $scale/100;
+sub minscale { my $v = (shift)*($scalefactor); return 1 if $v < 1; return $v; }
+my $numOpenTests             = minscale(100);
+my $numConfigBootPromptTests = minscale(100);
+my $numIceBootSoftBootTests  = minscale(20);
+my $numEchoMessagesPerFW     = minscale(3000);
+my $maxICCIs                 = 50;
+my $maxRETX                  = 100;
+my $maxBADSEQ                = 100;
 
 sub checkForRunning;
 sub driverPresent;
@@ -48,14 +60,17 @@ sub resetComstats;
 sub doDom;
 sub powerDownPair;
 sub is_communicating;
-sub powerOnQuad;
+sub powerOnPair;
 sub getPostRunStatus;
 sub reapKids;
 sub comstat;
 sub fpga;
+sub nTXIC; sub nRXIC; sub nTXCI; sub nRXCI;
+sub showDomFailures;
+sub haveDOR { my $c=shift; return 0 unless -d "/proc/driver/domhub/card$c"; return 1; }
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
-checkForRunning;
+# checkForRunning; <-- SKIP this - we already check for power-on.
 
 my $card = shift; 
 die usage unless defined $card && $card =~ /^\d+$/ && $card >= 0 && $card <= 7;
@@ -65,6 +80,10 @@ die usage unless $pairPair eq "01" || $pairPair eq "23";
 my @pairs;
 if($pairPair eq "01") { @pairs = (0, 1); }
 if($pairPair eq "23") { @pairs = (2, 3); }
+
+if(!haveDOR($card)) {
+    die "There is no DOR card $card on this domhub!\n";
+}
 
 my $now = timeString;
 my $testdir = "QUADTOOL__card$card"."_pair$pairPair"."_$now";
@@ -77,6 +96,7 @@ print "Creating symlink latest_quadtool to $testdir... ";
 if(-e "latest_quadtool") {
     unlink "latest_quadtool" or die "Can't unlink existing latest_quadtool: $!\n";
 }
+unlink "latest_quadtool";
 symlink($testdir, "latest_quadtool")
     or die "Can't symlink $testdir"."->latest_quadtool: $!.\n";
 print "OK.\n";
@@ -101,55 +121,72 @@ logmsg "          DOR card: $card\n";
 logmsg "        Wire pairs: ".(join ' ', @pairs)."\n";
 my %pairstat;
 my %domstat;
+my %domreason;
+my %ranParallel;
 
 foreach my $pair (@pairs) {
-    $pairstat{$pair} = "OK";
+    $pairstat{$pair} = "GOOD";
     foreach my $dom ("A","B") {
-        $domstat{$pair}{$dom} = "OK";
+        $domstat{$pair}{$dom} = "GOOD";
     }
 }
 
 sub failPair { 
     my $pair = shift; logdie unless defined $pair;
+    my $reason = shift;
     $pairstat{$pair} = "BAD"; 
     $domstat{$pair}{"A"} = "BAD";
     $domstat{$pair}{"B"} = "BAD";
+    $domreason{$pair}{"A"} = $reason;
+    $domreason{$pair}{"B"} = $reason;
 }
 
 sub failDom {
-    my $pair = shift; logdie unless defined $pair;
-    my $dom  = shift; logdie unless defined $dom;
+    my $pair   = shift; logdie unless defined $pair;
+    my $dom    = shift; logdie unless defined $dom;
+    my $reason = shift;
     $domstat{$pair}{$dom} = "BAD";
+    $domreason{$pair}{$dom} = $reason;
+}
+
+sub domIsBad {
+    my $pair   = shift; logdie unless defined $pair;
+    my $dom    = shift; logdie unless defined $dom;
+    return $domstat{$pair}{$dom} eq "BAD";
 }
 
 sub iffyDom {
     my $pair = shift; logdie unless defined $pair;
     my $dom  = shift; logdie unless defined $dom;
+    my $reason = shift;
     $domstat{$pair}{$dom} = "POOR";
+    $domreason{$pair}{$dom} = $reason;
 }
 
 logmsg "\n---------------------------------------------------\nTEST DETAILS:\n";
 
 foreach my $pair (@pairs) {
-    $pairstat{$pair} = "OK";
+    $pairstat{$pair} = "GOOD";
+
+    logmsg "Pair $pair... ";
     if(!plugged($card, $pair)) {
-	logmsg "Pair $pair is NOT plugged in.\n";
-	failPair($pair);
+	logmsg "\nPair $pair is NOT plugged in.\n";
+	failPair($pair,"unplugged");
 	next;
     } else {
-	logmsg "Pair $pair is plugged in.\n";
+	logmsg "plugged in... ";
     }
     if(pairIsPowered($card, $pair)) {
-	logmsg "Pail $pair is already powered on!  "
+	logmsg "\nPail $pair is already powered on!  "
 	    .  "Please make sure nobody\n is using the "
 	    .  "DOMs, and \"off all\" first....\n";
 	exit;
     }
     my $current = pairCurrent($card,$pair);
-    logmsg "Pair $pair current (power off): $current mA: ";
+    logmsg "off-current $current mA: ";
     if(!currentIsSmall($current)) {
-	logmsg "current with power off is too large!\n";
-	failPair($pair);
+	logmsg "\nCurrent with power off is too large!\n";
+	failPair($pair,"off overcurrent");
 	next;
     } else {
 	logmsg "OK.\n";
@@ -160,64 +197,99 @@ foreach my $pair (@pairs) {
     resetPowerLimitChecks($card, $pair);
 }
 
-my %isCom = powerOnQuad($card, @pairs);
-
 foreach my $pair (@pairs) {
     if($pairstat{$pair} ne "BAD") {
-	$current  = pairCurrent($card, $pair);
-	my $voltage  = pairVoltage($card, $pair);
-	logmsg "Pair $pair current=$current mA, voltage=$voltage V\n";
+	logmsg "Pair $pair PWR ON... ";
+	my %isCom = powerOnPair($card, $pair);
+	my $voltage;
+	my $current  = pairCurrent($card, $pair);
+	if(dorRev($card) > 0) {
+	    $voltage = pairVoltage($card, $pair)." V";
+	} else {
+	    $voltage = "(no voltage avail. for Rev 0)";
+	}
+	logmsg "$current mA, $voltage.\n";
 	# Check current, voltage
-	if(!onCurrentVoltageWithinLimits($card, $pair)) {
-	    logmsg "Current or voltage is not in limits!\n"
+	if(dorRev($card) > 0 && !onCurrentVoltageWithinLimits($card, $pair)) {
+	    logmsg "\nCurrent or voltage is not in limits!\n"
 		.  `cat /proc/driver/domhub/card$card/pair$pair/pwr_check`;
-	    failPair($pair);
+	    failPair($pair,"power check failed");
 	    next;
 	}
 	foreach my $dom ("A", "B") {
 	    if(! $isCom{$dom}) {
-		logmsg "Pair $pair DOM $dom is NOT communicating after power on.\n";
-		failDom($pair,$dom);
-		next;
-	    } 
-	    logmsg "Pair $pair DOM $dom is communicating after power on.\n";
+		logmsg "$card$pair$dom NOT communicating after power on\n";
+		failDom($pair,$dom,"uncommunicative");
+	    } else {
+		logmsg "$card$pair$dom is-communicating\n";
+	    }
 	}
 	# Next step - check again, look for hardware timeouts
 	sleep 1;
 	foreach my $dom ("A", "B") {
-	    if(! is_communicating($card, $pair, $dom)) {
-		logmsg "Pair $pair DOM $dom did not communicate a short while after power on.\n";
-		failDom($pair, $dom);
-		next;
+	    if(! domIsBad($pair,$dom)) {
+		logmsg "Recheck DOM $dom: ";
+		if(! is_communicating($card, $pair, $dom)) {
+		    logmsg "$card$pair$dom did not communicate a short while "
+			.  "after power on.\n";
+		    logmsg "Comstat for $card$pair$dom:\n";
+		    logmsg comstat($card,$pair,$dom);
+		    logmsg sprintf("$card$pair$dom %s communicating.\n",
+				   is_communicating($card,$pair,$dom)?"is":"is NOT");
+		    
+		    failDom($pair, $dom, "stopped communicating");
+		    next;
+		}
+		logmsg "$card$pair$dom still communicating... ";
+		if(hadHardwareTimeout($card, $pair, $dom)) {
+		    logmsg "\n$card$pair$dom had a hardware timeout!\n";
+		    logmsg "Comstat for $card$pair$dom:\n";
+		    logmsg comstat($card,$pair,$dom);
+		    failDom($pair, $dom, "hardware timeout");
+		    next;
+		}
+		logmsg "no hardware timeout.\n";
 	    }
-	    logmsg "Pair $pair DOM $dom is-communicating again after power on.\n";
-	    if(hadHardwareTimeout($card, $pair, $dom)) {
-		logmsg "DOM $dom had a hardware timeout!\n";
-		failDom($pair, $dom);
-		next;
-	    }
-	    logmsg "DOM $dom did not have a hardware timeout.\n";
 	}
     }
 }
 
+# See if there is any reason to run comms tests
+my $runParallelTests = 0;
 foreach my $pair (@pairs) {
-    # Perform parallel comms test for each DOM.
     if($pairstat{$pair} ne "BAD") {
-	foreach my $dom ("A", "B") { 
-	    if($domstat{$pair}{$dom} ne "BAD") {
-		my $domLog = "$pair$dom.log"; 
-		logmsg "Launching comms quality tests on $pair$dom, will save "
-		    .  "results to $domLog... \n";
-		my $pid = fork;
-		if(!defined $pid) {
-		    logmsg "Fork failed on $pair $dom!\n";
-		    next;
-		}
-		if($pid == 0) { # Kid does stuff
-		    doDom($card, $pair, $dom, $domLog);
-		    exit;
-		}
+        foreach my $dom ("A", "B") {
+            if($domstat{$pair}{$dom} ne "BAD") {
+		$runParallelTests = 1;
+	    }
+	}
+    }
+}
+
+if($runParallelTests) {
+    logmsg "Launching comms quality tests on good DOMs.\n"
+	.  "See files in $testdir for detailed results for each DOM.\n";
+    logmsg "Waiting for tests to complete...\n";
+
+    foreach my $pair (@pairs) {
+	# Perform parallel comms test for each DOM.
+	if($pairstat{$pair} ne "BAD") {
+	    foreach my $dom ("A", "B") { 
+		if($domstat{$pair}{$dom} ne "BAD") {
+		    my $domLog = "$pair$dom.log"; 
+		    my $pid = fork;
+		    if(!defined $pid) {
+			logmsg "Fork failed on $pair $dom!  DOM Hub memory low??\n";
+			next;
+		    }
+		    if($pid == 0) { # Kid does stuff
+			doDom($card, $pair, $dom, $domLog);
+			exit;
+		    } else {
+			# Remember to look for results in log file
+			$ranParallel{$pair}{$dom} = 1; 
+		    }
+		} 		    
 	    }
 	}
     }
@@ -225,21 +297,36 @@ foreach my $pair (@pairs) {
 
 reapKids;
 
-logmsg "\n---------------------------------------------------\nPASS/FAIL:\n";
+logmsg "Done.\n";
+logmsg "\n---------------------------------------------------\n";
+
+my @detailedDOMLogs;
+
+logmsg "Final DOM status summary:\n";
 foreach my $pair (@pairs) {
-    logmsg "Card $card pair $pair: ";
     my $stat = $pairstat{$pair}; 
     if($stat eq "BAD") {
-	logmsg "BAD\n"; 
+	logmsg "DOM STATUS $card$pair"."A BAD (".$domreason{$pair}{"A"}.")\n"; 
+	logmsg "DOM STATUS $card$pair"."B BAD (".$domreason{$pair}{"B"}.")\n"; 
     } else {
-	logmsg "\n";
 	foreach my $dom ("A","B") {
-	    my $domStatus = getPostRunStatus("$pair$dom.log");
-	    logmsg "        DOM $dom: $domStatus\n";
+	    my ($domStatus,$reason);
+	    if($ranParallel{$pair}{$dom}) {
+		($domStatus,$reason) = getPostRunStatus("$pair$dom.log");
+		push(@detailedDOMLogs, "$pair$dom.log") unless $domStatus eq "GOOD";
+	    } else {
+		$domStatus = $domstat{$pair}{$dom};
+		$reason    = $domreason{$pair}{$dom};
+	    }
+	    logmsg "DOM STATUS $card$pair$dom "
+		.  ($domStatus eq "GOOD"?"GOOD":"$domStatus ($reason)")."\n";
 	}
     }
     powerDownPair($card, $pair);
 }
+
+showDomFailures(@detailedDOMLogs);
+
 logmsg "Done.\n";
 close LOG;
 exit;
@@ -251,31 +338,232 @@ sub doDom {
     logdie unless ($dom eq "A" || $dom eq "B");
     my $log  = shift; logdie unless defined $log;
     open (DL, ">$log") or logdie "Can't open $log: $!\n";
-    my $domStatus = $domstat{$pair}{$dom};
-    print DL "Starting comms. tests on $card$pair$dom...\n";
+    print DL "Starting comms. tests on $card$pair$dom...\n" if $interactive;
 
-    foreach my $trial (0..$numOpenTests-1) {
-	print `cat /proc/driver/domhub/card$card/pair$pair/pwr`;
-	print `cat /proc/driver/domhub/card$card/pair$pair/dom$dom/is-communicating`;
-	print `cat /proc/driver/domhub/card$card/pair$pair/dom$dom/comstat`;
-	my $openresult = `/usr/local/bin/singleopen $card$pair$dom 2>&1`;
-	chomp $openresult;
-	if($openresult =~ /^OK\./) {
-	    print DL "Open $trial succeeded.\n";
-	} else {
-	    print `cat /proc/driver/domhub/card$card/pair$pair/dom$dom/comstat`;
-	    print `cat /proc/driver/domhub/card$card/fpga`;
-	    print DL "Open $trial FAILED ($openresult)\n";
+    my $opensum    = 0;
+    my $packetloss = 0;
+
+    sub showstats {
+	my $what    = shift;
+	my $mxicci  = shift;
+	my $nRXIC   = nRXIC($card,$pair,$dom);
+	my $nRXCI   = nRXCI($card,$pair,$dom);
+	my $nTXIC   = nTXIC($card,$pair,$dom);
+	my $nTXCI   = nTXCI($card,$pair,$dom);
+	$opensum   += $nRXIC + $nRXCI + $nTXIC + $nTXCI;
+	my $nretx   = nRESENT($card, $pair, $dom);
+	my $nbadseq = nBADSEQ($card, $pair, $dom);
+	$packetloss += $nretx + $nbadseq;
+	printf DL "$card$pair$dom %25s: "
+	    .    "RX ICs=%02d RX CIs=%02d TX ICs=%02d "
+	    .    "TX CIs=%02d RESENT=%02d BADSEQ=%02d\n", 
+	         $what, $nRXIC, $nRXCI, $nTXIC, $nTXCI, $nretx, $nbadseq;
+	
+	if($nretx > $maxRETX || $nbadseq > $maxBADSEQ) {
+	    print DL "\tHigh bad packet count!\n";
+	    iffyDom($pair,$dom,"dropped packets");
+	}
+	if($nRXIC > $mxicci || $nRXCI > $mxicci ||
+	   $nTXIC > $mxicci || $nTXCI > $mxicci) {
+	    print DL "\tHigh IC/CI count!\n";
+	    iffyDom($pair,$dom,"many IC/CIs");
+	}
+	if(hadHardwareTimeout($card,$pair,$dom)) {
+	    print DL "\tHardware timeout!\n";
 	    print DL comstat($card,$pair,$dom);
 	    print DL fpga($card);
-	    $domStatus = "BAD";
+	    failDom($pair,$dom,"hardware timeout");
+	} 
+    } 
+
+    # Perform multiple open tests
+    logmsg "$card$pair$dom performing multiple open tests...\n";
+    resetComstats($card, $pair, $dom);
+    foreach my $trial (0..$numOpenTests-1) {
+	my $domfile = "/dev/dhc$card"."w$pair"."d$dom";
+	logdie "DOM /dev file $domfile not found!\n" unless -e $domfile;
+	if(!sysopen(DOM, $domfile, O_RDWR)) {
+	    print DL "Open $trial FAILED ($!)\n";
+	    print DL comstat($card,$pair,$dom);
+	    print DL fpga($card);
+	    failDom($pair,$dom,"open failed");
 	    last;
+	} 
+	close DOM || logdie "Can't close $domfile: $!\n";
+    }
+
+    if(! domIsBad($pair,$dom)) {
+	showstats("open test ($numOpenTests trials)", $maxICCIs*$numOpenTests);
+    }
+
+    resetComstats($card, $pair, $dom);
+    # Run configboot tests and check for correct response
+    if(! domIsBad($pair,$dom)) {
+	logmsg "$card$pair$dom configboot prompt tests...\n" if $interactive;
+	foreach my $trial (0..$numConfigBootPromptTests-1) {
+	    # Perform configboot CR test
+	    my $prompt = "#";
+	    my $cmd = "se.pl $card$pair$dom \\  \\$prompt 2>&1";
+	    my $result = `$cmd`;
+	    if($result !~ /SUCCESS/) {
+		print DL "\nCard $card pair $pair DOM $dom: Didn't get configboot prompt:\n"
+		    .    "$result\n";
+		print DL comstat($card,$pair,$dom);
+		print DL fpga($card);
+		failDom($pair,$dom,"didn't get configboot prompt");
+		last;
+	    }
+
 	}
     }
 
+    # Check RESENT and BADSEQ after configboot tests
+    if(! domIsBad($pair,$dom)) {
+	showstats("cbtests",$maxICCIs * $numConfigBootPromptTests);
+    }
+
+    my $domtag = "NOT AVAILABLE";
+    # Put DOMs in Iceboot and try softboot
+    resetComstats($card, $pair, $dom);
+    if(! domIsBad($pair,$dom)) {
+	logmsg "$card$pair$dom Iceboot/softboot tests...\n" if $interactive;
+
+	# First time through, configboot->iceboot...
+	my $cmd = "se.pl $card$pair$dom r .+\\\> 2>&1";
+	my $result = `$cmd`;
+	if($result !~ /(Iceboot.*?\.\.\.).*?SUCCESS/s) {
+	    print DL "\nCard $card pair $pair DOM $dom: Didn't get Iceboot prompt:\n"
+		.    "$result\n";
+	    print DL comstat($card,$pair,$dom);
+	    print DL fpga($card);
+	    failDom($pair,$dom,"didn't get Iceboot prompt");
+	} else {       
+	    my $domtag = $1; chomp $domtag;
+	    print DL "DOM IceBoot Release Tag: '$1'\n";
+
+	    # Subsequent trials - softboot and collect Iceboot prompts
+	    foreach my $trial (0..$numIceBootSoftBootTests-1) {
+		  # Try softboot
+		my $cmd = "sb.pl $card$pair$dom 2>&1";
+		my $result = `$cmd`;
+		if($result !~ /Ok./) {
+		    print DL "\nCard $card pair $pair DOM $dom: Softboot failed:\n"
+			.    "$result\n";
+		    print DL comstat($card,$pair,$dom);
+		    print DL fpga($card);
+		    failDom($pair,$dom,"softboot failed");
+		    last;
+		}
+		sleep 4;
+		
+		$cmd = "se.pl $card$pair$dom \\  .+\\\> 2>&1";
+		$result = `$cmd`;
+		if($result !~ /(Iceboot.*?\.\.\.).*?SUCCESS/s) {
+		    print DL "\nCard $card pair $pair DOM $dom: Didn't get Iceboot prompt:\n"
+			.    "$result\n";
+		    print DL comstat($card,$pair,$dom);
+		    print DL fpga($card);
+		    failDom($pair,$dom,"didn't get Iceboot prompt");
+		    last;
+		}
+	    }
+	}
+    }
+
+    # After iceboot/softboot tests, check hardware timeouts, IC/CI, RESENT and BADSEQ
+
+    if(! domIsBad($pair,$dom)) {
+	showstats ("iceboot/softboot test", $maxICCIs * $numIceBootSoftBootTests);
+    }
+
+    # Perform cyclic echo tests for each DOM...
+    # configboot has to come last because it doesn't support softboot.
+    foreach my $sbi ("iceboot.sbi", "domapp.sbi", "configboot.sbi") {
+	if(! domIsBad($pair,$dom)) {
+	    # Prepare state by softbooting...
+	    my $cmd = "sb.pl $card$pair$dom 2>&1";
+	    my $result = `$cmd`;
+	    if($result !~ /Ok./) {
+		print DL "\nCard $card pair $pair DOM $dom: Softboot failed:\n"
+		    .    "$result\n";
+		print DL comstat($card,$pair,$dom);
+		print DL fpga($card);
+		failDom($pair,$dom,"softboot failed");
+		last;
+	    }
+	    sleep 4;
+
+	    # ... and loading the correct FPGA...
+	    $cmd = "se.pl $card$pair$dom "
+		.  "s\\\"\\\ $sbi\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\> 2>&1";
+	    $result = `$cmd`;
+	    if($result !~ /SUCCESS/) {
+		print DL "\nCard $card pair $pair DOM $dom: FPGA load failed:\n"
+		    .    "$result\n";
+		print DL comstat($card,$pair,$dom);
+		print DL fpga($card);
+		failDom($pair,$dom,"FPGA load failed");
+		last;
+	    }
+
+	    # ... and firing up echo-mode...
+
+            $cmd = "se.pl $card$pair$dom echo-mode echo-mode";
+	    $result = `$cmd`;
+            if($result !~ /SUCCESS/) {
+                print DL "\nCard $card pair $pair DOM $dom: echo-mode failed:\n"
+                    .    "$result\n";
+                print DL comstat($card,$pair,$dom);
+                print DL fpga($card);
+		failDom($pair,$dom,"echo-mode failed");
+                last;
+            }
+
+	    # reset comstats here so we focus on echo test behavior
+	    
+	    resetComstats($card, $pair, $dom);
+	    logmsg "$card$pair$dom $sbi echo test ...\n" if $interactive;
+	    $cmd = "readwrite HUB $card$pair$dom -s $numEchoMessagesPerFW 2>&1";
+	    $result = `$cmd`;
+	    if($result !~/SUCCESS/) {
+		print DL "\nCard $card pair $pair DOM $dom: Failed echo test:\n"
+		    .    "$result\n";
+		print DL comstat($card,$pair,$dom);
+		print DL fpga($card);
+		failDom($pair,$dom,"failed echo test");
+		last;
+	    }
+	    
+	    showstats("$sbi echo($numEchoMessagesPerFW)", $maxICCIs);
+	}
+    }
+
+    print DL "Sum of IC/CI for all operations: $opensum\n";
+    print DL "Sum of lost packets for all operations: $packetloss\n";
+
     # Note status changes so parent process can collect results
-    print DL "DOM status after per-DOM tests is $domStatus\n";
+    my $reason = ($domstat{$pair}{$dom} ne "GOOD" ? ("[".$domreason{$pair}{$dom}."]") : "");
+    print DL "DOM status after per-DOM tests is $domstat{$pair}{$dom} $reason\n";
     close DL;
+}
+
+
+sub showDomFailures {
+    my @detailedDOMLogs = @_;
+    foreach my $dl (@detailedDOMLogs) {
+	if(-f $dl) {
+	    logmsg <<EOF;
+------- Detailed log of non-good DOM $dl -----------
+EOF
+;
+	    open DL, $dl || logdie "Can't open $dl: $!\n";
+	    for(<DL>) {
+		logmsg $_;
+	    }
+	    close DL;
+	    logmsg "\n\n";
+	}
+    }
 }
 
 sub checkForRunning {
@@ -380,6 +668,13 @@ sub resetPowerLimitChecks {
 }
 
 
+sub dorRev {
+    my $card = shift; die unless defined $card;
+    my $pf = `cat /proc/driver/domhub/card$card/rev`;
+    chomp $pf;
+    return $pf;
+}
+
 sub onCurrentVoltageWithinLimits {
     my $card = shift; die unless defined $card;
     my $pair = shift; die unless defined $pair;
@@ -392,6 +687,78 @@ sub onCurrentVoltageWithinLimits {
     }
 }
 
+sub nRXIC {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /RX:.*?NIC=(\d+)/s) {
+	return $1;
+    } else {
+	logdie "ERROR: bad comstat format, $comstat\n";
+    }
+}
+
+sub nTXIC {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /TX:.*?NIC=(\d+)/s) {
+        return $1;
+    } else {
+        logdie "ERROR: bad comstat format, $comstat\n";
+    }
+
+}
+
+sub nRXCI {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /RX:.*?NCI=(\d+)/s) {
+        return $1;
+    } else {
+        logdie "ERROR: bad comstat format, $comstat\n";
+    }
+}
+
+sub nTXCI {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /TX:.*?NCI=(\d+)/s) {
+        return $1;
+    } else {
+        logdie "ERROR: bad comstat format, $comstat\n";
+    }
+}
+
+sub nRESENT {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /RESENT=(\d+)/) {
+	return $1;
+    }else {
+        logdie "ERROR: bad comstat format, $comstat\n";
+    }
+}
+
+sub nBADSEQ {
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $comstat = comstat($card,$pair,$dom);
+    if($comstat =~ /BADSEQ=(\d+)/) {
+        return $1;
+    }else {
+        logdie "ERROR: bad comstat format, $comstat\n";
+    }
+}
 
 sub hadHardwareTimeout {
     my $card = shift; die unless defined $card;
@@ -434,32 +801,30 @@ sub resetComstats {
 
 
 sub powerDownPair {
-    my $card = shift; die unless defined $card;
-    my $pair = shift; die unless defined $pair;
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
     open(PF, ">/proc/driver/domhub/card$card/pair$pair/pwr")
-        or die "Can't open power proc file: $!\n";
+        or logdie "Can't open power proc file: $!\n";
     print PF "off\n";
     close PF;
 }
 
 
 sub is_communicating { 
-    my $card = shift; die unless defined $card;
-    my $pair = shift; die unless defined $pair;
-    my $dom  = shift; die unless ($dom eq "A" || $dom eq "B");
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless ($dom eq "A" || $dom eq "B");
     my $pf = `cat /proc/driver/domhub/card$card/pair$pair/dom$dom/is-communicating`;
     return ($pf =~ /is communicating/) ? 1 : 0;
 }
 
-sub powerOnQuad {
+sub powerOnPair {
 # Apply power to wire pair and determine which DOMs are communicating
-    my $card = shift; die unless defined $card;
+    my $card = shift; logdie unless defined $card;
+    my $pair = shift; logdie unless defined $pair;
     my $onargs = "";
-    foreach my $pair (@_) {
-	my 
-    my $pair = shift; die unless defined $pair;
     open(PF, ">/proc/driver/domhub/card$card/pair$pair/pwr") 
-	or die "Can't open power proc file: $!\n";
+	or logdie "Can't open power proc file: $!\n";
     print PF "on\n";
     close PF;
     return ("A"=>is_communicating($card, $pair, "A"),
@@ -469,14 +834,20 @@ sub powerOnQuad {
 sub getPostRunStatus {
     my $logFile = shift; logdie "getPostRunStatus needs an argument!\n" unless defined $logFile;
     if(! -f $logFile) {
-	logmsg "Can't find DOM log file $logFile!\n";
 	return "BAD";
     }
     my $now = time;
     my $tail;
     $tail = `tail $logFile`;
-    if($tail =~ /DOM status after per-DOM tests is (\S+)/) {
-	return $1;
+    if($tail =~ /DOM status after per-DOM tests is (.*)/) {
+	my $pat = $1;
+	if($pat =~ /(\S+)\s+\[(.*?)\]/) {
+	    return ($1,$2);
+	} elsif($pat =~ /(\S+)/) {
+	    return $1;
+	} else {
+	    return $pat;
+	}
     } else {
 	logmsg "$logFile corrupt:\n$tail\n";
     }
