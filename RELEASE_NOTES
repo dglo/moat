@@ -1,17 +1,13 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
-Requires: domhub-tools 100 or greater
+Requires: domhub-tools 101 or greater
 
+============================================================================
 
-
-
-
-
-NEXT RELEASE
+V00-01-00  9/27/05
+- First implementation of "quadtool" script.
+  See http://docushare.icecube.wisc.edu/docushare/dsweb/Get/Document-16941/
 - Fixed spurious readgps error message on control-C 
-
-
-
 
 ============================================================================
 
