@@ -2,6 +2,16 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 Requires: domhub-tools 101 or greater
 
+
+NEXT RELEASE
+
+- Make readwrite show detailed dumps of sent/recv'd msgs
+  when error occurs
+- Add -w option to readwrite which causes readwrite to wait 3
+  seconds for any stale data to come through before starting
+  echotest
+- Change quadtool to use readwrite -w for echotests
+
 ============================================================================
 
 V00-01-00  9/27/05
