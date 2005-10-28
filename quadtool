@@ -39,10 +39,13 @@ my $numConfigBootPromptTests = minscale(100);
 my $numIceBootSoftBootTests  = minscale(20);
 my $numEchoMessagesPerFW     = minscale(3000);
 my $maxICCIs                 = 50;
-my $maxRETX                  = 100;
-my $maxBADSEQ                = 100;
+my $maxRETX                  = minscale(300); 
+my $maxBADSEQ                = minscale(300);
 
-sub checkForRunning;
+$maxRETX   = 10 if $maxRETX   < 10; # Give a little more elbow room for short runs
+$maxBADSEQ = 10 if $maxBADSEQ < 10; #  
+
+sub warnIfRunning;
 sub driverPresent;
 sub driverVersion;
 sub moatVersion { my $mv = `cat /usr/local/share/moat-version`; chomp $mv; return $mv; }
@@ -70,7 +73,7 @@ sub showDomFailures;
 sub haveDOR { my $c=shift; return 0 unless -d "/proc/driver/domhub/card$c"; return 1; }
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
-# checkForRunning; <-- SKIP this - we already check for power-on.
+warnIfRunning; 
 
 my $card = shift; 
 die usage unless defined $card && $card =~ /^\d+$/ && $card >= 0 && $card <= 7;
@@ -566,7 +569,7 @@ EOF
     }
 }
 
-sub checkForRunning {
+sub warnIfRunning {
     my @haveEm;
     my @ps = `ps --columns 1000 ax`;
     foreach my $ps(@ps) {
@@ -581,8 +584,18 @@ sub checkForRunning {
 	}
     }
     if(@haveEm) {
-	die  "Quadtool is already running - please wait for it "
-	    ."to finish\nor kill it.\n";
+	warn <<EOF;
+*** WARNING ***
+
+Quadtool is already running.  Running too many quadtools
+in parallel increases the likelihood of overestimating
+packet losses due to CPU constraints on the DOM Hub side
+(extra RESENT or BADSEQ).  Ask jacobsen\@npxdesigns.com for
+more details.
+
+***         ***
+EOF
+;
     }
 }
 
