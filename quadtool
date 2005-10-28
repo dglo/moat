@@ -399,7 +399,7 @@ sub doDom {
     resetComstats($card, $pair, $dom);
     # Run configboot tests and check for correct response
     if(! domIsBad($pair,$dom)) {
-	logmsg "$card$pair$dom configboot prompt tests...\n" if $interactive;
+	logmsg "$card$pair$dom configboot prompt tests...\n";
 	foreach my $trial (0..$numConfigBootPromptTests-1) {
 	    # Perform configboot CR test
 	    my $prompt = "#";
@@ -426,7 +426,7 @@ sub doDom {
     # Put DOMs in Iceboot and try softboot
     resetComstats($card, $pair, $dom);
     if(! domIsBad($pair,$dom)) {
-	logmsg "$card$pair$dom Iceboot/softboot tests...\n" if $interactive;
+	logmsg "$card$pair$dom Iceboot/softboot tests...\n";
 
 	# First time through, configboot->iceboot...
 	my $cmd = "se.pl $card$pair$dom r .+\\\> 2>&1";
@@ -522,7 +522,7 @@ sub doDom {
 	    # reset comstats here so we focus on echo test behavior
 	    
 	    resetComstats($card, $pair, $dom);
-	    logmsg "$card$pair$dom $sbi echo test ...\n" if $interactive;
+	    logmsg "$card$pair$dom $sbi echo test ...\n";
 	    $cmd = "readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
 	    $result = `$cmd`;
 	    if($result !~/SUCCESS/) {
