@@ -523,14 +523,14 @@ sub doDom {
 	    
 	    resetComstats($card, $pair, $dom);
 	    logmsg "$card$pair$dom $sbi echo test ...\n" if $interactive;
-	    $cmd = "readwrite HUB $card$pair$dom -s $numEchoMessagesPerFW 2>&1";
+	    $cmd = "readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
 	    $result = `$cmd`;
 	    if($result !~/SUCCESS/) {
-		print DL "\nCard $card pair $pair DOM $dom: Failed echo test:\n"
+		print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi):\n"
 		    .    "$result\n";
 		print DL comstat($card,$pair,$dom);
 		print DL fpga($card);
-		failDom($pair,$dom,"failed echo test");
+		failDom($pair,$dom,"failed echo test ($sbi)");
 		last;
 	    }
 	    
