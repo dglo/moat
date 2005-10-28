@@ -2,13 +2,14 @@
 
 #
 # John Jacobsen, John Jacobsen IT Services, for LBNL/IceCube
-# $Id: sb.pl,v 1.1 2005-03-14 23:56:01 jacobsen Exp $
+# $Id: sb.pl,v 1.2 2005-10-28 20:32:45 jacobsen Exp $
 
 use Fcntl;
 use strict;
 use POSIX "sys_wait_h";
 
 sub drain;
+sub reapKids;
 
 my @domdevs;
 my %cardof;
@@ -89,7 +90,8 @@ foreach my $dom (@domdevs) {
     }
 }
 
-wait;
+reapKids;
+
 my $le = lasterr;
 if($le =~ /^0:/) { 
     print "Ok.\n";
@@ -98,5 +100,17 @@ if($le =~ /^0:/) {
     print "Don't know which DOM it was - run $0 on each channel individually to find out.\n";
 }
 
+sub reapKids {
+    use POSIX ":sys_wait_h";
+    my $kid;
+    while(1) {
+        $kid = waitpid(-1, &WNOHANG);
+        if($kid == -1) {
+            last;
+        } else {
+            select(undef,undef,undef,0.01);
+        }
+    }
+}
 
 
