@@ -11,7 +11,8 @@ NEXT RELEASE
   seconds for any stale data to come through before starting
   echotest
 - Change quadtool to use readwrite -w for echotests
-
+- Have quadtool warn user if quadtool is already running 
+  (heavy CPU load can influence RESENT/BADSEQ measurements)
 ============================================================================
 
 V00-01-00  9/27/05
