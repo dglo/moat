@@ -39,6 +39,7 @@ install:
 	install se.pl          $(INSTALL_BIN)
 	install sb.pl          $(INSTALL_BIN)
 	install anamoat        $(INSTALL_BIN)
+	install quadtool       $(INSTALL_BIN)
 
 clean:
 	rm -f *~ readwrite dtest tcaltest dtest readgps rndpkt

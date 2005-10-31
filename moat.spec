@@ -40,6 +40,7 @@ install stagedtests.pl ${RPM_BUILD_ROOT}/usr/local/bin
 install se.pl ${RPM_BUILD_ROOT}/usr/local/bin
 install sb.pl ${RPM_BUILD_ROOT}/usr/local/bin
 install anamoat ${RPM_BUILD_ROOT}/usr/local/bin
+install quadtool ${RPM_BUILD_ROOT}/usr/local/bin
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -61,6 +62,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/local/bin/se.pl
 /usr/local/bin/sb.pl
 /usr/local/bin/anamoat
+/usr/local/bin/quadtool
 
 %changelog
 * Tue Jul 12 2005 John E. Jacobsen <jacobsen@npxdesigns.com>
