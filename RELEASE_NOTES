@@ -13,6 +13,7 @@ NEXT RELEASE
 - Change quadtool to use readwrite -w for echotests
 - Have quadtool warn user if quadtool is already running 
   (heavy CPU load can influence RESENT/BADSEQ measurements)
+- Increase echo-loop timeout to handle DOMs with packet losses
 ============================================================================
 
 V00-01-00  9/27/05
