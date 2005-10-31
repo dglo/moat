@@ -1,15 +1,15 @@
 #!/usr/bin/perl
 
 #
-# John Jacobsen, John Jacobsen IT Services, for LBNL/IceCube
-# $Id: se.pl,v 1.3 2005-10-25 17:26:04 jacobsen Exp $
+# John Jacobsen, NPX Designs, Inc. for LBNL/IceCube
+# 
+# Send data to multiple DOMs and look for correct response
+#
+# $Id: se.pl,v 1.4 2005-10-31 19:50:38 jacobsen Exp $
 
 use Fcntl;
 use strict;
 use IO::Select;
-
-sub drain;
-
 
 my @domdevs;
 my %cardof;
@@ -151,51 +151,6 @@ if($todo == 0) {
 	    }
 	}
     }
-}
-
-exit;
-
-sub drain {
-    my $expect = shift;
-    my $maxexpect = 1000;
-    my $gotsomething = 0;
-    my $dataread = "";
-
-    if(defined $expect) {
-	for(1..$maxexpect) {
-	    my $read = sysread DD, $buf, 4096;
-	    if($read > 0) {
-		my $printable = $buf; 
-		$printable =~ s/\r/\\r/g;
-		$printable =~ s/\n/\\n/g;
-		print "$printable";
-		$dataread .= $buf;
-		return 0 if $dataread =~ /$expect/;
-	    } else {
-		select undef,undef,undef,0.1;
-	    }
-	}
-	return 1; # didn't get it
-    }
-
-    # default case:
-    for(1..10) {
-	my $read = sysread DD, $buf, 4096;
-	if($read > 0) {
-	    my $printable = $buf; 
-	    $printable =~ s/\r/\\r/g;
-	    $printable =~ s/\n/\\n/g;
-	    print "$printable";
-	    $gotsomething++;
-	    $dataread .= $buf;
-	}
-	select undef,undef,undef,0.001;
-    }
-    if($dataread =~ /error/i) {
-	print "Error present on stream from DOM.\n";
-	return 1;
-    }
-    return 0;
 }
 
 
