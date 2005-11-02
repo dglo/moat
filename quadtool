@@ -409,7 +409,8 @@ sub doDom {
 	    my $cmd = "se.pl $card$pair$dom \\  \\$prompt 2>&1";
 	    my $result = `$cmd`;
 	    if($result !~ /SUCCESS/) {
-		print DL "\nCard $card pair $pair DOM $dom: Didn't get configboot prompt:\n"
+		print DL "\nCard $card pair $pair DOM $dom: Didn't get configboot prompt "
+		    .    "(trial $trial):\n"
 		    .    "$result\n";
 		print DL comstat($card,$pair,$dom);
 		print DL fpga($card);
