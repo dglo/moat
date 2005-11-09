@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 
 # quadtool
+# Tool for measuring the health of IceCube quads after deployment
+# (quad == 4 DOMs on one twisted quad)
+#
 # John Jacobsen, NPX Designs, Inc., jacobsen@npxdesigns.com
 # Started: Fri Jul  1 13:40:54 2005
 
@@ -71,6 +74,10 @@ sub fpga;
 sub nTXIC; sub nRXIC; sub nTXCI; sub nRXCI;
 sub showDomFailures;
 sub haveDOR { my $c=shift; return 0 unless -d "/proc/driver/domhub/card$c"; return 1; }
+sub failDom;
+sub failPair;
+sub domIsBad;
+sub iffyDom;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -134,39 +141,10 @@ foreach my $pair (@pairs) {
     }
 }
 
-sub failPair { 
-    my $pair = shift; logdie unless defined $pair;
-    my $reason = shift;
-    $pairstat{$pair} = "BAD"; 
-    $domstat{$pair}{"A"} = "BAD";
-    $domstat{$pair}{"B"} = "BAD";
-    $domreason{$pair}{"A"} = $reason;
-    $domreason{$pair}{"B"} = $reason;
-}
-
-sub failDom {
-    my $pair   = shift; logdie unless defined $pair;
-    my $dom    = shift; logdie unless defined $dom;
-    my $reason = shift;
-    $domstat{$pair}{$dom} = "BAD";
-    $domreason{$pair}{$dom} = $reason;
-}
-
-sub domIsBad {
-    my $pair   = shift; logdie unless defined $pair;
-    my $dom    = shift; logdie unless defined $dom;
-    return $domstat{$pair}{$dom} eq "BAD";
-}
-
-sub iffyDom {
-    my $pair = shift; logdie unless defined $pair;
-    my $dom  = shift; logdie unless defined $dom;
-    my $reason = shift;
-    $domstat{$pair}{$dom} = "POOR";
-    $domreason{$pair}{$dom} = $reason;
-}
 
 logmsg "\n---------------------------------------------------\nTEST DETAILS:\n";
+
+# Look for plugged in DOMs, check off-currents:
 
 foreach my $pair (@pairs) {
     $pairstat{$pair} = "GOOD";
@@ -199,6 +177,8 @@ foreach my $pair (@pairs) {
     resetComstats($card, $pair, "B");
     resetPowerLimitChecks($card, $pair);
 }
+
+# Power on wire pairs and check communicating, voltages, currents, etc.
 
 foreach my $pair (@pairs) {
     if($pairstat{$pair} ne "BAD") {
@@ -884,4 +864,36 @@ sub reapKids {
             select(undef,undef,undef,0.01);
         }
     }
+}
+
+sub failPair { 
+    my $pair = shift; logdie unless defined $pair;
+    my $reason = shift;
+    $pairstat{$pair} = "BAD"; 
+    $domstat{$pair}{"A"} = "BAD";
+    $domstat{$pair}{"B"} = "BAD";
+    $domreason{$pair}{"A"} = $reason;
+    $domreason{$pair}{"B"} = $reason;
+}
+
+sub failDom {
+    my $pair   = shift; logdie unless defined $pair;
+    my $dom    = shift; logdie unless defined $dom;
+    my $reason = shift;
+    $domstat{$pair}{$dom} = "BAD";
+    $domreason{$pair}{$dom} = $reason;
+}
+
+sub domIsBad {
+    my $pair   = shift; logdie unless defined $pair;
+    my $dom    = shift; logdie unless defined $dom;
+    return $domstat{$pair}{$dom} eq "BAD";
+}
+
+sub iffyDom {
+    my $pair = shift; logdie unless defined $pair;
+    my $dom  = shift; logdie unless defined $dom;
+    my $reason = shift;
+    $domstat{$pair}{$dom} = "POOR";
+    $domreason{$pair}{$dom} = $reason;
 }
