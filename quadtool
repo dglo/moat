@@ -53,7 +53,7 @@ sub warnIfRunning;
 sub driverPresent;
 sub driverVersion;
 sub moatVersion { my $mv = `cat /usr/local/share/moat-version`; chomp $mv; return $mv; }
-sub hostName { my $h = `hostname 2>&1`; chomp $h; return $h; }
+sub hostName { my $h = `/bin/hostname 2>&1`; chomp $h; return $h; }
 sub plugged;
 sub timeString;
 sub pairCurrent;
@@ -396,7 +396,7 @@ sub doDom {
 	foreach my $trial (0..$numConfigBootPromptTests-1) {
 	    # Perform configboot CR test
 	    my $prompt = "#";
-	    my $cmd = "se.pl $card$pair$dom \\  \\$prompt 2>&1";
+	    my $cmd = "/usr/local/bin/se.pl $card$pair$dom \\  \\$prompt 2>&1";
 	    my $result = `$cmd`;
 	    if($result !~ /SUCCESS/) {
 		print DL "\nCard $card pair $pair DOM $dom: Didn't get configboot prompt "
@@ -423,7 +423,7 @@ sub doDom {
 	logmsg "$card$pair$dom Iceboot/softboot tests...\n";
 
 	# First time through, configboot->iceboot...
-	my $cmd = "se.pl $card$pair$dom r .+\\\> 2>&1";
+	my $cmd = "/usr/local/bin/se.pl $card$pair$dom r .+\\\> 2>&1";
 	my $result = `$cmd`;
 	if($result !~ /(Iceboot.*?\.\.\.).*?SUCCESS/s) {
 	    print DL "\nCard $card pair $pair DOM $dom: Didn't get Iceboot prompt:\n"
@@ -438,7 +438,7 @@ sub doDom {
 	    # Subsequent trials - softboot and collect Iceboot prompts
 	    foreach my $trial (0..$numIceBootSoftBootTests-1) {
 		  # Try softboot
-		my $cmd = "sb.pl $card$pair$dom 2>&1";
+		my $cmd = "/usr/local/bin/sb.pl $card$pair$dom 2>&1";
 		my $result = `$cmd`;
 		if($result !~ /Ok./) {
 		    print DL "\nCard $card pair $pair DOM $dom: Softboot failed:\n"
@@ -450,7 +450,7 @@ sub doDom {
 		}
 		sleep 4;
 		
-		$cmd = "se.pl $card$pair$dom \\  .+\\\> 2>&1";
+		$cmd = "/usr/local/bin/se.pl $card$pair$dom \\  .+\\\> 2>&1";
 		$result = `$cmd`;
 		if($result !~ /(Iceboot.*?\.\.\.).*?SUCCESS/s) {
 		    print DL "\nCard $card pair $pair DOM $dom: Didn't get Iceboot prompt:\n"
@@ -474,7 +474,7 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
 	logmsg "$card$pair$dom performing single tcal test...\n";
-	my $singleTcal = "tcaltest -t 1 $card$pair$dom 1 noshow 2>&1";
+	my $singleTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom 1 noshow 2>&1";
 	my $result = `$singleTcal`;
 	if($result =~ /Done/s) {
 	    dolog("single-tcal", "OK");
@@ -489,7 +489,7 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
         logmsg "$card$pair$dom performing multiple tcal tests...\n";
-	my $multiTcal = "tcaltest -t 1 $card$pair$dom $numTcals noshow 2>&1";
+	my $multiTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom $numTcals noshow 2>&1";
         my $result = `$multiTcal`;
         if($result =~ /Done/s) {
 	    dolog("multi-tcal", "$numTcals OK");
@@ -504,7 +504,7 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
         resetComstats($card, $pair, $dom);
         logmsg "$card$pair$dom performing tcal RMS tests...\n";
-	my $dorms = "cd /usr/local/share/domhub-testing; tcal-test.sh $card$pair$dom 2>&1";
+	my $dorms = "cd /usr/local/share/domhub-testing; ./tcal-test.sh $card$pair$dom 2>&1";
 	my $result = `$dorms`; chomp $result;
 # 00B 2511.8910 4.8064 2500.8377 2524.7870 529.2936 520 539 3.1493 498.9349 480 520 2.4293 612
 	if($result =~ /\d\d\w \d+\.?\d+? (\d+\.?\d+?) \d+\.?\d+? \d+\.?\d+? \d+\.?\d+? \d+ \d+/) {
@@ -527,7 +527,7 @@ sub doDom {
     foreach my $sbi ("iceboot.sbi", "domapp.sbi", "configboot.sbi") {
 	if(! domIsBad($pair,$dom)) {
 	    # Prepare state by softbooting...
-	    my $cmd = "sb.pl $card$pair$dom 2>&1";
+	    my $cmd = "/usr/local/bin/sb.pl $card$pair$dom 2>&1";
 	    my $result = `$cmd`;
 	    if($result !~ /Ok./) {
 		print DL "\nCard $card pair $pair DOM $dom: Softboot failed:\n"
@@ -540,7 +540,7 @@ sub doDom {
 	    sleep 4;
 
 	    # ... and loading the correct FPGA...
-	    $cmd = "se.pl $card$pair$dom "
+	    $cmd = "/usr/local/bin/se.pl $card$pair$dom "
 		.  "s\\\"\\\ $sbi\\\"\\\ find\\\ if\\\ fpga\\\ endif s\\\".+\\\> 2>&1";
 	    $result = `$cmd`;
 	    if($result !~ /SUCCESS/) {
@@ -554,7 +554,7 @@ sub doDom {
 
 	    # ... and firing up echo-mode...
 
-            $cmd = "se.pl $card$pair$dom echo-mode echo-mode";
+            $cmd = "/usr/local/bin/se.pl $card$pair$dom echo-mode echo-mode";
 	    $result = `$cmd`;
             if($result !~ /SUCCESS/) {
                 print DL "\nCard $card pair $pair DOM $dom: echo-mode failed:\n"
@@ -569,7 +569,7 @@ sub doDom {
 	    
 	    resetComstats($card, $pair, $dom);
 	    logmsg "$card$pair$dom $sbi echo test ...\n";
-	    $cmd = "readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
+	    $cmd = "/usr/local/bin/readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
 	    $result = `$cmd`;
 	    if($result !~/SUCCESS/) {
 		print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi):\n"
@@ -614,7 +614,7 @@ EOF
 
 sub warnIfRunning {
     my @haveEm;
-    my @ps = `ps --columns 1000 ax`;
+    my @ps = `/bin/ps --columns 1000 ax`;
     foreach my $ps(@ps) {
         chomp $ps;
         if($ps =~ m|/usr/local/bin/quadtool| ||
@@ -898,7 +898,7 @@ sub getPostRunStatus {
     }
     my $now = time;
     my $tail;
-    $tail = `tail $logFile`;
+    $tail = `/usr/bin/tail $logFile`;
     if($tail =~ /DOM status after per-DOM tests is (.*)/) {
 	my $pat = $1;
 	if($pat =~ /(\S+)\s+\[(.*?)\]/) {
