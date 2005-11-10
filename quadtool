@@ -515,7 +515,7 @@ sub doDom {
 		iffyDom($pair, $dom, "TCAL RMS too large");
 	    }
 	} else {
-	    print DL "RMS tcal measurement failed (tcalcycle):\$result";
+	    print DL "RMS tcal measurement failed (tcalcycle):\n$result";
 	    print DL comstat($card,$pair,$dom);
             print DL fpga($card);
             failDom($pair,$dom,"tcal RMS measurement failed");
