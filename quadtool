@@ -644,14 +644,14 @@ EOF
 
 
 sub driverPresent { 
-    my $lsmod = `lsmod | grep dh`;
+    my $lsmod = `/sbin/lsmod | grep dh`;
     if($lsmod =~ /^dh\s+/) { return 1; }
     return 0;
 }
 
 
 sub driverVersion { 
-    my $fvers = `fvers.pl 2>&1`;
+    my $fvers = `/usr/local/bin/fvers.pl 2>&1`;
     if($fvers =~ /Driver (\S+)/) {
 	return $1;
     } else {
