@@ -15,7 +15,7 @@ Usage: quadtool <card> 01 or <card> 23
 	  23: second quad (wire pairs 2, 3)
 Options:
 	  -t : Log results to terminal; don't background
-          -s (x%) : Scale duration by x%.  Default: 100% (~15min)
+          -s (x%) : Scale duration by x%.  Default: 100% (~20min)
 
 EOU
 ;
@@ -44,6 +44,7 @@ my $numEchoMessagesPerFW     = minscale(3000);
 my $maxICCIs                 = 50;
 my $maxRETX                  = minscale(300); 
 my $maxBADSEQ                = minscale(300);
+my $numTcals                 = minscale(1000);
 
 $maxRETX   = 10 if $maxRETX   < 10; # Give a little more elbow room for short runs
 $maxBADSEQ = 10 if $maxBADSEQ < 10; #  
@@ -78,6 +79,8 @@ sub failDom;
 sub failPair;
 sub domIsBad;
 sub iffyDom;
+sub addreason;
+sub reasons;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -133,6 +136,7 @@ my %pairstat;
 my %domstat;
 my %domreason;
 my %ranParallel;
+
 
 foreach my $pair (@pairs) {
     $pairstat{$pair} = "GOOD";
@@ -289,8 +293,8 @@ logmsg "Final DOM status summary:\n";
 foreach my $pair (@pairs) {
     my $stat = $pairstat{$pair}; 
     if($stat eq "BAD") {
-	logmsg "DOM STATUS $card$pair"."A BAD (".$domreason{$pair}{"A"}.")\n"; 
-	logmsg "DOM STATUS $card$pair"."B BAD (".$domreason{$pair}{"B"}.")\n"; 
+	logmsg "DOM STATUS $card$pair"."A BAD (".reasons($pair,"A").")\n"; 
+	logmsg "DOM STATUS $card$pair"."B BAD (".reasons($pair,"B").")\n"; 
     } else {
 	foreach my $dom ("A","B") {
 	    my ($domStatus,$reason);
@@ -299,7 +303,7 @@ foreach my $pair (@pairs) {
 		push(@detailedDOMLogs, "$pair$dom.log") unless $domStatus eq "GOOD";
 	    } else {
 		$domStatus = $domstat{$pair}{$dom};
-		$reason    = $domreason{$pair}{$dom};
+		$reason    = reasons($pair, $dom);
 	    }
 	    logmsg "DOM STATUS $card$pair$dom "
 		.  ($domStatus eq "GOOD"?"GOOD":"$domStatus ($reason)")."\n";
@@ -326,6 +330,12 @@ sub doDom {
     my $opensum    = 0;
     my $packetloss = 0;
 
+    sub dolog {
+	my $what    = shift;
+	my $results = shift;
+	printf DL "$card$pair$dom %25s: $results\n", $what
+    }
+
     sub showstats {
 	my $what    = shift;
 	my $mxicci  = shift;
@@ -337,10 +347,10 @@ sub doDom {
 	my $nretx   = nRESENT($card, $pair, $dom);
 	my $nbadseq = nBADSEQ($card, $pair, $dom);
 	$packetloss += $nretx + $nbadseq;
-	printf DL "$card$pair$dom %25s: "
-	    .    "RX ICs=%02d RX CIs=%02d TX ICs=%02d "
-	    .    "TX CIs=%02d RESENT=%02d BADSEQ=%02d\n", 
-	         $what, $nRXIC, $nRXCI, $nTXIC, $nTXCI, $nretx, $nbadseq;
+	
+	dolog $what, sprintf("RX ICs=%02d RX CIs=%02d TX ICs=%02d " .
+			     "TX CIs=%02d RESENT=%02d BADSEQ=%02d", 
+			     $nRXIC, $nRXCI, $nTXIC, $nTXCI, $nretx, $nbadseq);
 	
 	if($nretx > $maxRETX || $nbadseq > $maxBADSEQ) {
 	    print DL "\tHigh bad packet count!\n";
@@ -460,6 +470,58 @@ sub doDom {
 	showstats ("iceboot/softboot test", $maxICCIs * $numIceBootSoftBootTests);
     }
 
+    # Perform tcal tests for each DOM -- first check for successful completion
+    if(! domIsBad($pair,$dom)) {
+	resetComstats($card, $pair, $dom);
+	logmsg "$card$pair$dom performing single tcal test...\n";
+	my $singleTcal = "tcaltest -t 1 $card$pair$dom 1 noshow 2>&1";
+	my $result = `$singleTcal`;
+	if($result =~ /Done/s) {
+	    dolog("single-tcal", "OK");
+	} else {
+	    print DL "Single tcal FAILED:\n$result";
+	    print DL comstat($card,$pair,$dom);
+	    print DL fpga($card);
+	    failDom($pair,$dom,"single tcal failed");
+	}
+    }
+
+    if(! domIsBad($pair,$dom)) {
+	resetComstats($card, $pair, $dom);
+        logmsg "$card$pair$dom performing multiple tcal tests...\n";
+	my $multiTcal = "tcaltest -t 1 $card$pair$dom $numTcals noshow 2>&1";
+        my $result = `$multiTcal`;
+        if($result =~ /Done/s) {
+	    dolog("multi-tcal", "$numTcals OK");
+	} else {
+	    print DL "Multiple tcal FAILED:\n$result";
+            print DL comstat($card,$pair,$dom);
+            print DL fpga($card);
+            failDom($pair,$dom,"multi tcal failed");
+        }
+    }
+
+    if(! domIsBad($pair,$dom)) {
+        resetComstats($card, $pair, $dom);
+        logmsg "$card$pair$dom performing tcal RMS tests...\n";
+	my $dorms = "cd /usr/local/share/domhub-testing; tcal-test.sh $card$pair$dom 2>&1";
+	my $result = `$dorms`; chomp $result;
+# 00B 2511.8910 4.8064 2500.8377 2524.7870 529.2936 520 539 3.1493 498.9349 480 520 2.4293 612
+	if($result =~ /\d\d\w \d+\.?\d+? (\d+\.?\d+?) \d+\.?\d+? \d+\.?\d+? \d+\.?\d+? \d+ \d+/) {
+	    # Didn't match everything, but should be enough to guarantee success
+	    my $rms = $1;
+	    dolog("tcal-rms","$result ($rms)");
+	    if($rms > 5.0) {
+		iffyDom($pair, $dom, "TCAL RMS too large");
+	    }
+	} else {
+	    print DL "RMS tcal measurement failed (tcalcycle):\$result";
+	    print DL comstat($card,$pair,$dom);
+            print DL fpga($card);
+            failDom($pair,$dom,"tcal RMS measurement failed");
+	}
+    }
+	    
     # Perform cyclic echo tests for each DOM...
     # configboot has to come last because it doesn't support softboot.
     foreach my $sbi ("iceboot.sbi", "domapp.sbi", "configboot.sbi") {
@@ -526,7 +588,7 @@ sub doDom {
     print DL "Sum of lost packets for all operations: $packetloss\n";
 
     # Note status changes so parent process can collect results
-    my $reason = ($domstat{$pair}{$dom} ne "GOOD" ? ("[".$domreason{$pair}{$dom}."]") : "");
+    my $reason = ($domstat{$pair}{$dom} ne "GOOD" ? ("[".reasons($pair,$dom)."]") : "");
     print DL "DOM status after per-DOM tests is $domstat{$pair}{$dom} $reason\n";
     close DL;
 }
@@ -872,8 +934,8 @@ sub failPair {
     $pairstat{$pair} = "BAD"; 
     $domstat{$pair}{"A"} = "BAD";
     $domstat{$pair}{"B"} = "BAD";
-    $domreason{$pair}{"A"} = $reason;
-    $domreason{$pair}{"B"} = $reason;
+    addreason($pair, "A", $reason);
+    addreason($pair, "B", $reason);
 }
 
 sub failDom {
@@ -881,7 +943,7 @@ sub failDom {
     my $dom    = shift; logdie unless defined $dom;
     my $reason = shift;
     $domstat{$pair}{$dom} = "BAD";
-    $domreason{$pair}{$dom} = $reason;
+    addreason($pair, $dom, $reason);
 }
 
 sub domIsBad {
@@ -895,5 +957,23 @@ sub iffyDom {
     my $dom  = shift; logdie unless defined $dom;
     my $reason = shift;
     $domstat{$pair}{$dom} = "POOR";
-    $domreason{$pair}{$dom} = $reason;
+    addreason($pair, $dom, $reason);
 }
+
+sub reasons { 
+    my $pair = shift; 
+    my $dom  = shift;
+    return join ', ', @{$domreason{$pair}{$dom}};
+}
+
+sub addreason {
+    my $pair = shift;
+    my $dom  = shift;
+    my $what = shift;
+    if(!defined $domreason{$pair}{$dom}) {
+	$domreason{$pair}{$dom} = [];
+    } 
+    # my $arrayref = $domreason{$pair}{$dom};
+    push @{$domreason{$pair}{$dom}}, $what;
+}
+
