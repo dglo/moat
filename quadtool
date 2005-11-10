@@ -973,7 +973,9 @@ sub addreason {
     if(!defined $domreason{$pair}{$dom}) {
 	$domreason{$pair}{$dom} = [];
     } 
-    # my $arrayref = $domreason{$pair}{$dom};
+    for(@{$domreason{$pair}{$dom}}) {
+	return if $_ eq $what ;
+    }
     push @{$domreason{$pair}{$dom}}, $what;
 }
 
