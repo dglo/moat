@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.5 2005-08-26 14:20:18 jacobsen Exp $
+   $Id: tcaltest.c,v 1.6 2005-11-28 21:00:27 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +35,7 @@ int usage(void) {
 	 "\t[-t <tcal_delay_usec>]\n"
 	 "\t[-s <skip_bytes>]\n"
 	 "\t[-f <data_file>]\n"
+	 "\t[-q : continue when data quality check fails]\n"
 	 "\t[-d <dor_clock_mhz> (default 10)\n"
 	 "\t\tIMPORTANT: use -d 20 for non-DSB configurations\n");
   return -1;
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
   int dofile = 0;
   int dor_clock = 10; /* 10 MHz (DSB) version is default */
   int skipbytes = 0;
+  int survive_dqfail = 0;
   char c;
   static struct option long_options[] =
     {
@@ -100,7 +102,7 @@ int main(int argc, char *argv[]) {
   /************* Process command arguments ******************/
 
   while(1) {
-    c = getopt_long (argc, argv, "ht:f:s:d:o:",
+    c = getopt_long (argc, argv, "qht:f:s:d:o:",
 		     long_options, &option_index);
     if (c == -1)
       break;
@@ -128,6 +130,7 @@ int main(int argc, char *argv[]) {
       }
       fprintf(stderr, "Will skip the first %d bytes...\n", skipbytes);
       break;
+    case 'q': survive_dqfail = 1; break;
     default:
       exit(usage());
     }
@@ -151,6 +154,7 @@ int main(int argc, char *argv[]) {
 
   long rdtimeouts = 0;
   long wrtimeouts = 0;
+  long dqfail     = 0;
   long success    = 0;
 
   if(dofile) { 
@@ -187,8 +191,8 @@ int main(int argc, char *argv[]) {
     }
 
     if(icalib > 0 && !(icalib % 10)) {
-      fprintf(stderr, "%s: %ld tcals, %ld rdtimeouts, %ld wrtimeouts.\n",
-	      datafile, success, rdtimeouts, wrtimeouts);
+      fprintf(stderr, "%s: %ld tcals, %ld rdtouts, %ld wrtouts, %ld bad.\n",
+	      datafile, success, rdtimeouts, wrtimeouts, dqfail);
     }
 
     if(!dofile) {
@@ -245,11 +249,11 @@ int main(int argc, char *argv[]) {
       } else {
 	if(! tcal_data_ok(dor_clock, &tcalrec)) {
 	  fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
-	  dump_fpga(icard);
-	  dump_comstat(icard, ipair, cdom);
-	  exit(-1);
+	  if(survive_dqfail) {
+	    dqfail++;
+	  } else 
+	    exit(-1);
 	}
-	//printf("hdr: 0x%x.\n",(int) tcalrec.hdr);
 	if(! no_show) {
 	  printf("cal(%ld) ", icalib);
 	  show_tcalrec(stdout, &tcalrec);
@@ -271,8 +275,8 @@ int main(int argc, char *argv[]) {
   if(dofile) close(file);
 
   fprintf(stderr, "Done:\n");
-  fprintf(stderr, "%s: %ld tcals, %ld rdtimeouts, %ld wrtimeouts.\n", datafile,
-	  success, rdtimeouts, wrtimeouts);
+  fprintf(stderr, "%s: %ld tcals, %ld rdtouts, %ld wrtouts, %ld bad.\n",
+	  datafile, success, rdtimeouts, wrtimeouts, dqfail);
   return 0;
 
 }
