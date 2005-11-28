@@ -8,6 +8,7 @@ Requires: domhub-tools 201 or greater
 - Update requirement on domhub-tools (201) in RPM
 - If tcal succeeds but data fails quality check during quadtool,
   don't fail DOM, but report DOM as POOR.
+- Allow quadtool to handle negative DOR current values
 
 ============================================================================
 
