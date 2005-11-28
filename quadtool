@@ -81,6 +81,7 @@ sub domIsBad;
 sub iffyDom;
 sub addreason;
 sub reasons;
+sub getCardProc;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -125,13 +126,28 @@ sub logmsg { my $m = shift; print LOG $m; if($interactive) { print $m; } }
 sub logdie { my $m = shift; print LOG $m; if($interactive) { die $m; } else { exit(-1); } }
 
 logdie "No DOR driver present!\n" unless driverPresent;
-logmsg "\n---------------------------------------------------\nCONFIGURATION:\n";
-logmsg "   Test start time: $now\n";
-logmsg "DOR driver version: ".driverVersion."\n";
-logmsg "      MOAT version: ".moatVersion."\n";
-logmsg "          Hostname: ".hostName."\n";
-logmsg "          DOR card: $card\n";
-logmsg "        Wire pairs: ".(join ' ', @pairs)."\n";
+logmsg <<EOF;
+---------------------------------------------------
+CONFIGURATION: 
+   Test start time: $now
+DOR driver version: ${\driverVersion}
+      MOAT version: ${\moatVersion}
+          Hostname: ${\hostName}
+          DOR card: $card
+
+        Wire pairs: ${\join(' ', @pairs)}
+
+COMMS PARAMETERS:
+           Autodac: ${\getCardProc($card, "autodac")}
+            Dacmax: ${\getCardProc($card, "dacmax")}
+           Minclev: ${\getCardProc($card, "minclev")}
+           Maxclev: ${\getCardProc($card, "maxclev")}
+            Rdelay: ${\getCardProc($card, "rdelay")}
+            Sdelay: ${\getCardProc($card, "sdelay")}
+            Thresh: ${\getCardProc($card, "thresh")}
+
+EOF
+    ;
 my %pairstat;
 my %domstat;
 my %domreason;
@@ -979,3 +995,11 @@ sub addreason {
     push @{$domreason{$pair}{$dom}}, $what;
 }
 
+sub getCardProc {
+    my $card = shift; return "getCardProc: FAILED(arg)" unless defined $card;
+    my $name = shift; return "getCardProc: FAILED(arg)" unless defined $name;
+    my $proc = "/proc/driver/domhub/card$card/$name";
+    return "getCardProc: FAILED(no proc file $proc)" unless -e $proc;
+    my $bq   = `cat $proc`;
+    return (split ' ', $bq)[-1];
+}
