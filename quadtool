@@ -82,6 +82,7 @@ sub iffyDom;
 sub addreason;
 sub reasons;
 sub getCardProc;
+sub hadBadTcals;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -490,10 +491,15 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
 	logmsg "$card$pair$dom performing single tcal test...\n";
-	my $singleTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom 1 noshow 2>&1";
+	my $singleTcal = "/usr/local/bin/tcaltest -q -t 1 $card$pair$dom 1 noshow 2>&1";
 	my $result = `$singleTcal`;
 	if($result =~ /Done/s) {
-	    dolog("single-tcal", "OK");
+	    if(hadBadTcals($result)) {
+		print DL "Had bad tcal data:\n$result";
+		iffyDom($pair, $dom, "bad tcal data");
+	    } else {
+		dolog("single-tcal", "OK");
+	    }
 	} else {
 	    print DL "Single tcal FAILED:\n$result";
 	    print DL comstat($card,$pair,$dom);
@@ -505,10 +511,15 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
         logmsg "$card$pair$dom performing multiple tcal tests...\n";
-	my $multiTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom $numTcals noshow 2>&1";
+	my $multiTcal = "/usr/local/bin/tcaltest -q -t 1 $card$pair$dom $numTcals noshow 2>&1";
         my $result = `$multiTcal`;
         if($result =~ /Done/s) {
-	    dolog("multi-tcal", "$numTcals OK");
+	    if(hadBadTcals($result)) {
+                print DL "Had bad tcal data:\n$result";
+                iffyDom($pair, $dom, "bad tcal data");
+            } else {
+                dolog("single-tcal", "OK");
+            }
 	} else {
 	    print DL "Multiple tcal FAILED:\n$result";
             print DL comstat($card,$pair,$dom);
@@ -1002,4 +1013,13 @@ sub getCardProc {
     return "getCardProc: FAILED(no proc file $proc)" unless -e $proc;
     my $bq   = `cat $proc`;
     return (split ' ', $bq)[-1];
+}
+
+sub hadBadTcals {
+    my $tcalOutput = shift; return 1 unless defined $tcalOutput;
+    if($tcalOutput =~ /Done.+?\s+(\d+)\s+bad/s) {
+	return ($1==0)?0:1;
+    } else {
+	return 1;
+    }
 }
