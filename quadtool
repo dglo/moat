@@ -706,7 +706,7 @@ sub pairCurrent {
     my $card = shift; my $pair = shift; 
     die unless defined $card && defined $pair;
     my $pf = `cat /proc/driver/domhub/card$card/pair$pair/current`;
-    if($pf =~ /current is (\d+) mA/) {
+    if($pf =~ /current is (\S+) mA/) {
 	return $1;
     } else {
 	return "UNKNOWN!";
