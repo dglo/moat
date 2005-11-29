@@ -84,7 +84,7 @@ int getcard(char *s, int max) {
 }
 
 long long gps_to_secs(char * gps) {
-  return ((gps[1]-'0')*100 + (gps[2]-'0')*10 + (gps[3]-'0'))*86400 // Days
+  return ((gps[1]-'0')*100 + (gps[2]-'0')*10 + (gps[3]-'0') - 1)*86400 // Days, from Jan 0
     +    ((gps[5]-'0')*10 + (gps[6]-'0'))*3600                     // Hrs
     +    ((gps[8]-'0')*10 + (gps[9]-'0'))*60                       // Min
     +    (gps[11]-'0')*10 + (gps[12]-'0');                         // Sec
@@ -217,7 +217,8 @@ int main(int argc, char ** argv) {
     }      
 
     long long this_t = gps_to_secs(tsbuf);
-    if(flaggps && had_t && tscount > skipdt) {
+    if(flaggps && had_t && tscount > skipdt 
+       && this_t != 0) {  // Exception for Jan 0 rollover
       long long lldt = this_t - last_t;
       if(lldt != 1) {
 	had_bad_dt = 1;
