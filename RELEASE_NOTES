@@ -1,8 +1,7 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
-
-Next release:
+V00-02-00  11/29/05
 Requires: domhub-tools 201 or greater
 - Report comms parameters used for each test
 - Update requirement on domhub-tools (201) in RPM
@@ -15,6 +14,8 @@ Requires: domhub-tools 201 or greater
   stderr as well as output.
 - Add readgps to require check on correct GPS times (1 second delta required
   after the first 15 readouts).
+- Change tcaltest to make sure DOR TX and RX clock values always increase
+  (except for 48 bit rollover)
 
 ============================================================================
 
