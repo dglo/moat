@@ -1,6 +1,6 @@
 /* tcaltest.c - John Jacobsen, john@johnj.com, for LBNL/IceCube, Jul. 2003 
    Tests functionality of time calibration
-   $Id: tcaltest.c,v 1.5 2005-08-26 14:20:18 jacobsen Exp $
+   $Id: tcaltest.c,v 1.7 2005-11-30 00:26:44 jacobsen Exp $
 */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +35,7 @@ int usage(void) {
 	 "\t[-t <tcal_delay_usec>]\n"
 	 "\t[-s <skip_bytes>]\n"
 	 "\t[-f <data_file>]\n"
+	 "\t[-q : continue when data quality check fails]\n"
 	 "\t[-d <dor_clock_mhz> (default 10)\n"
 	 "\t\tIMPORTANT: use -d 20 for non-DSB configurations\n");
   return -1;
@@ -42,7 +43,7 @@ int usage(void) {
 
 struct dh_tcalib_t tcalrec;
 
-int tcal_data_ok(int dor_clock, struct dh_tcalib_t *tcalrec);
+int tcal_data_ok(int dor_clock, struct dh_tcalib_t *tcalrec, int itrial, u64 last_tx, u64 last_rx);
 void show_tcalrec(FILE *fp, struct dh_tcalib_t *tcalrec);
 int getProcFile(char *filename, int len, char *arg, int * icard, int * ipair, char * cdom);
 int chkpower(int icard, int ipair);
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
   int dofile = 0;
   int dor_clock = 10; /* 10 MHz (DSB) version is default */
   int skipbytes = 0;
+  int survive_dqfail = 0;
   char c;
   static struct option long_options[] =
     {
@@ -100,7 +102,7 @@ int main(int argc, char *argv[]) {
   /************* Process command arguments ******************/
 
   while(1) {
-    c = getopt_long (argc, argv, "ht:f:s:d:o:",
+    c = getopt_long (argc, argv, "qht:f:s:d:o:",
 		     long_options, &option_index);
     if (c == -1)
       break;
@@ -128,6 +130,7 @@ int main(int argc, char *argv[]) {
       }
       fprintf(stderr, "Will skip the first %d bytes...\n", skipbytes);
       break;
+    case 'q': survive_dqfail = 1; break;
     default:
       exit(usage());
     }
@@ -151,6 +154,7 @@ int main(int argc, char *argv[]) {
 
   long rdtimeouts = 0;
   long wrtimeouts = 0;
+  long dqfail     = 0;
   long success    = 0;
 
   if(dofile) { 
@@ -175,6 +179,8 @@ int main(int argc, char *argv[]) {
   signal(SIGKILL, argghhhh);
   signal(SIGINT,  argghhhh);
 
+  u64 last_dor_tx, last_dor_rx;
+
   for(icalib=0; icalib < ntrials; icalib++) {
 
     if(die) break; /* Signal handler argghhhh sets die so we quit */
@@ -187,8 +193,8 @@ int main(int argc, char *argv[]) {
     }
 
     if(icalib > 0 && !(icalib % 10)) {
-      fprintf(stderr, "%s: %ld tcals, %ld rdtimeouts, %ld wrtimeouts.\n",
-	      datafile, success, rdtimeouts, wrtimeouts);
+      fprintf(stderr, "%s: %ld tcals, %ld rdtouts, %ld wrtouts, %ld bad.\n",
+	      datafile, success, rdtimeouts, wrtimeouts, dqfail);
     }
 
     if(!dofile) {
@@ -243,13 +249,16 @@ int main(int argc, char *argv[]) {
 	  continue;
 	}
       } else {
-	if(! tcal_data_ok(dor_clock, &tcalrec)) {
+	if(! tcal_data_ok(dor_clock, &tcalrec, icalib, last_dor_tx, last_dor_rx)) {
 	  fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
-	  dump_fpga(icard);
-	  dump_comstat(icard, ipair, cdom);
-	  exit(-1);
+	  if(survive_dqfail) {
+	    dqfail++;
+	  } else 
+	    exit(-1);
+	} else {
+	  last_dor_tx = tcalrec.dor_t0;
+	  last_dor_rx = tcalrec.dor_t3;
 	}
-	//printf("hdr: 0x%x.\n",(int) tcalrec.hdr);
 	if(! no_show) {
 	  printf("cal(%ld) ", icalib);
 	  show_tcalrec(stdout, &tcalrec);
@@ -271,18 +280,37 @@ int main(int argc, char *argv[]) {
   if(dofile) close(file);
 
   fprintf(stderr, "Done:\n");
-  fprintf(stderr, "%s: %ld tcals, %ld rdtimeouts, %ld wrtimeouts.\n", datafile,
-	  success, rdtimeouts, wrtimeouts);
+  fprintf(stderr, "%s: %ld tcals, %ld rdtouts, %ld wrtouts, %ld bad.\n",
+	  datafile, success, rdtimeouts, wrtimeouts, dqfail);
   return 0;
 
 }
 
-int tcal_data_ok(int dor_clock, struct dh_tcalib_t * tcalrec) {
+int tcal_data_ok(int dor_clock, struct dh_tcalib_t * tcalrec, int itrial,
+		 u64 last_dor_tx, u64 last_dor_rx) {
   int dom_baseline, dor_baseline;
   int iwf, foundthresh;
 
 #define CLOCKBITS 48
 #define MASK      ((1LL << CLOCKBITS)-1)
+#define DOR_FREQ  20000000
+
+  if(itrial > 0 && last_dor_tx > tcalrec->dor_t0 
+     && tcalrec->dor_t0 > 10*DOR_FREQ) { // Kludgy, but allow rollover if TXed value is
+                                         // within the first 10 seconds of rollover
+    fprintf(stderr, "Bad DOR TX timestamp order (cur=%lld, last=%lld)\n",
+	    (unsigned long long) tcalrec->dor_t0, (unsigned long long) last_dor_tx);
+    show_tcalrec(stderr, tcalrec);
+    return 0;
+  }
+
+  if(itrial > 0 && last_dor_rx > tcalrec->dor_t3
+     && tcalrec->dor_t3 > 10*DOR_FREQ) {
+    fprintf(stderr, "Bad DOR RX timestamp order (cur=%lld, last=%lld)\n",
+            (unsigned long long) tcalrec->dor_t3, (unsigned long long) last_dor_rx);
+    show_tcalrec(stderr, tcalrec);
+    return 0;
+  }
 
   if(((tcalrec->dor_t3 - tcalrec->dor_t0)&MASK) > MAX_DOR_TSTAMP_DIFF) {
     fprintf(stderr, "Bad DOR timestamps (wrong order or diff. to big):\n");

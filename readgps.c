@@ -41,6 +41,7 @@ int usage(void) {
 	  "                   delta-t values (default: 15)\n"
 	  "          -f       Flag deviations from 20M ticks of delta time\n"
 	  "          -c       REQUIRE 20M clock tick time difference.\n"
+	  "          -g       Flag deviations from 1 sec in GPS times\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -82,6 +83,13 @@ int getcard(char *s, int max) {
   return gotdigit ? card : -1;
 }
 
+long long gps_to_secs(char * gps) {
+  return ((gps[1]-'0')*100 + (gps[2]-'0')*10 + (gps[3]-'0') - 1)*86400 // Days, from Jan 0
+    +    ((gps[5]-'0')*10 + (gps[6]-'0'))*3600                     // Hrs
+    +    ((gps[8]-'0')*10 + (gps[9]-'0'))*60                       // Min
+    +    (gps[11]-'0')*10 + (gps[12]-'0');                         // Sec
+}
+
 int main(int argc, char ** argv) {
   int dodiff     = 0;
   int nretries   = 0;
@@ -90,10 +98,11 @@ int main(int argc, char ** argv) {
   int waitval    = 1;
   int skipdt     = 15;
   int dodt       = 0;
+  int flaggps    = 0;
   int doflag     = 0;
   int had_bad_dt = 0;
   while(1) {
-    char c = getopt(argc, argv, "hdocfi:w:");
+    char c = getopt(argc, argv, "dogchfi:w:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
@@ -102,6 +111,7 @@ int main(int argc, char ** argv) {
     case 'i': skipdt = atoi(optarg); break;
     case 'c': dodt = 1; break;
     case 'f': doflag = 1; break;
+    case 'g': flaggps = 1; break;
     case 'h':
     default:
       exit(usage());
@@ -135,6 +145,9 @@ int main(int argc, char ** argv) {
   signal(SIGQUIT, argghhhh); /* "Die, suckah..." */
   signal(SIGKILL, argghhhh);
   signal(SIGINT,  argghhhh);
+
+  long long last_t;
+  int had_t = 0;
 
   while(1) {
     if(die) break;
@@ -198,17 +211,29 @@ int main(int argc, char ** argv) {
     fflush(stdout);
 
     if(dodt && tscount > skipdt && dt != WANT_DT) {
-      fprintf(stderr,"readgps ERROR: %s: bad time difference dt=%lu, wanted %lu.\n",
+      fprintf(stderr,"readgps ERROR: %s: bad DOR time difference dt=%lu, wanted %lu.\n",
 	      pfnam, dt, WANT_DT);
       die = 1;
     }      
 
+    long long this_t = gps_to_secs(tsbuf);
+    if(flaggps && had_t && tscount > skipdt 
+       && this_t != 0) {  // Exception for Jan 0 rollover
+      long long lldt = this_t - last_t;
+      if(lldt != 1) {
+	had_bad_dt = 1;
+	fprintf(stderr,"readgps ERROR: %s: bad GPS time difference!  last_t=%lld, this_t=%lld.\n",
+		pfnam, last_t, this_t);
+      }
+    }
+    had_t = 1;
+    last_t = this_t;
     tlast = t;
     tscount++;
     if(oneshot || die) break;
   }
   if(die && had_bad_dt) {
-    fprintf(stderr,"readgps WARNING: %s: had one or more dt != %lu.\n", pfnam, WANT_DT);
+    fprintf(stderr,"readgps WARNING: %s: had a bad delta-T value!\n", pfnam);
   }
   return 0;
 } 

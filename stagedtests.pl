@@ -370,7 +370,7 @@ dochoice("Start [l]ong-term echo/tcalib$ifgps tests", 'l', FALLTHRU_OK, sub {
 	    m|/proc/driver/domhub/card(\d+)/syncgps|;
 	    my $fout = "card$1_gps.out";
 	    my $chk = ($checkgps ? "-e $gpsskip,$gpsticks" : "");
-	    my $gpscmd = "/usr/local/bin/readgps -f -d $_ >&$fout $chk &";
+	    my $gpscmd = "/usr/local/bin/readgps -f -g -d $_ >&$fout $chk &";
 	    print "Running $gpscmd...\n";
 	    system $gpscmd;
 	}

@@ -41,11 +41,12 @@ my $numOpenTests             = minscale(100);
 my $numConfigBootPromptTests = minscale(100);
 my $numIceBootSoftBootTests  = minscale(20);
 my $numEchoMessagesPerFW     = minscale(3000);
-my $maxICCIs                 = 50;
+my $maxICCIs                 = 100;
 my $maxRETX                  = minscale(300); 
 my $maxBADSEQ                = minscale(300);
 my $numTcals                 = minscale(1000);
-
+my $maxEchoDurationSecs      = 10+minscale(15*60); # max duration 15 minutes for full echotest
+                                                   # if noise free, should be ~2 minutes.
 $maxRETX   = 10 if $maxRETX   < 10; # Give a little more elbow room for short runs
 $maxBADSEQ = 10 if $maxBADSEQ < 10; #  
 
@@ -81,6 +82,9 @@ sub domIsBad;
 sub iffyDom;
 sub addreason;
 sub reasons;
+sub getCardProc;
+sub hadBadTcals;
+sub timecmd;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -125,13 +129,28 @@ sub logmsg { my $m = shift; print LOG $m; if($interactive) { print $m; } }
 sub logdie { my $m = shift; print LOG $m; if($interactive) { die $m; } else { exit(-1); } }
 
 logdie "No DOR driver present!\n" unless driverPresent;
-logmsg "\n---------------------------------------------------\nCONFIGURATION:\n";
-logmsg "   Test start time: $now\n";
-logmsg "DOR driver version: ".driverVersion."\n";
-logmsg "      MOAT version: ".moatVersion."\n";
-logmsg "          Hostname: ".hostName."\n";
-logmsg "          DOR card: $card\n";
-logmsg "        Wire pairs: ".(join ' ', @pairs)."\n";
+logmsg <<EOF;
+---------------------------------------------------
+CONFIGURATION: 
+   Test start time: $now
+DOR driver version: ${\driverVersion}
+      MOAT version: ${\moatVersion}
+          Hostname: ${\hostName}
+          DOR card: $card
+
+        Wire pairs: ${\join(' ', @pairs)}
+
+COMMS PARAMETERS:
+           Autodac: ${\getCardProc($card, "autodac")}
+            Dacmax: ${\getCardProc($card, "dacmax")}
+           Minclev: ${\getCardProc($card, "minclev")}
+           Maxclev: ${\getCardProc($card, "maxclev")}
+            Rdelay: ${\getCardProc($card, "rdelay")}
+            Sdelay: ${\getCardProc($card, "sdelay")}
+            Thresh: ${\getCardProc($card, "thresh")}
+
+EOF
+    ;
 my %pairstat;
 my %domstat;
 my %domreason;
@@ -474,10 +493,15 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
 	logmsg "$card$pair$dom performing single tcal test...\n";
-	my $singleTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom 1 noshow 2>&1";
+	my $singleTcal = "/usr/local/bin/tcaltest -q -t 1 $card$pair$dom 1 noshow 2>&1";
 	my $result = `$singleTcal`;
 	if($result =~ /Done/s) {
-	    dolog("single-tcal", "OK");
+	    if(hadBadTcals($result)) {
+		print DL "Had bad tcal data:\n$result";
+		iffyDom($pair, $dom, "bad tcal data");
+	    } else {
+		dolog("single-tcal", "OK");
+	    }
 	} else {
 	    print DL "Single tcal FAILED:\n$result";
 	    print DL comstat($card,$pair,$dom);
@@ -489,10 +513,15 @@ sub doDom {
     if(! domIsBad($pair,$dom)) {
 	resetComstats($card, $pair, $dom);
         logmsg "$card$pair$dom performing multiple tcal tests...\n";
-	my $multiTcal = "/usr/local/bin/tcaltest -t 1 $card$pair$dom $numTcals noshow 2>&1";
+	my $multiTcal = "/usr/local/bin/tcaltest -q -t 1 $card$pair$dom $numTcals noshow 2>&1";
         my $result = `$multiTcal`;
         if($result =~ /Done/s) {
-	    dolog("multi-tcal", "$numTcals OK");
+	    if(hadBadTcals($result)) {
+                print DL "Had bad tcal data:\n$result";
+                iffyDom($pair, $dom, "bad tcal data");
+            } else {
+                dolog("single-tcal", "OK");
+            }
 	} else {
 	    print DL "Multiple tcal FAILED:\n$result";
             print DL comstat($card,$pair,$dom);
@@ -570,7 +599,20 @@ sub doDom {
 	    resetComstats($card, $pair, $dom);
 	    logmsg "$card$pair$dom $sbi echo test ...\n";
 	    $cmd = "/usr/local/bin/readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
-	    $result = `$cmd`;
+	    $result = timecmd $maxEchoDurationSecs, $cmd;
+	    if($result eq "timeout") { # DOM is POOR if configboot, else BAD
+		if($sbi eq "configboot.sbi") {
+		    iffyDom($pair, $dom, "configboot echo test took too long");
+		} else {
+		    print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi): "
+			.    "test duration too long!\n";
+		    print DL comstat($card,$pair,$dom);
+		    print DL fpga($card);
+		    failDom($pair,$dom,"echo test took too long ($sbi)");
+		    last;
+		}
+	    }
+		
 	    if($result !~/SUCCESS/) {
 		print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi):\n"
 		    .    "$result\n";
@@ -679,7 +721,7 @@ sub pairCurrent {
     my $card = shift; my $pair = shift; 
     die unless defined $card && defined $pair;
     my $pf = `cat /proc/driver/domhub/card$card/pair$pair/current`;
-    if($pf =~ /current is (\d+) mA/) {
+    if($pf =~ /current is (\S+) mA/) {
 	return $1;
     } else {
 	return "UNKNOWN!";
@@ -979,3 +1021,31 @@ sub addreason {
     push @{$domreason{$pair}{$dom}}, $what;
 }
 
+sub getCardProc {
+    my $card = shift; return "getCardProc: FAILED(arg)" unless defined $card;
+    my $name = shift; return "getCardProc: FAILED(arg)" unless defined $name;
+    my $proc = "/proc/driver/domhub/card$card/$name";
+    return "getCardProc: FAILED(no proc file $proc)" unless -e $proc;
+    my $bq   = `cat $proc`;
+    return (split ' ', $bq)[-1];
+}
+
+sub hadBadTcals {
+    my $tcalOutput = shift; return 1 unless defined $tcalOutput;
+    if($tcalOutput =~ /Done.+?\s+(\d+)\s+bad/s) {
+	return ($1==0)?0:1;
+    } else {
+	return 1;
+    }
+}
+
+
+sub timecmd { 
+    my $tout = shift; my $str = shift;
+    return "invalid args" unless ($tout > 0 && defined $str);
+    $SIG{ALRM} = sub { die "timeout" };
+    my $output;
+    eval "alarm $tout; \$output = `$str`; alarm(0);";
+    return "timeout" if $@ =~ /timeout/;
+    return $output;
+}

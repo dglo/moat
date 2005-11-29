@@ -1,8 +1,26 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
-Requires: domhub-tools 101 or greater
+
+V00-02-00  11/29/05
+Requires: domhub-tools 201 or greater
+- Report comms parameters used for each test
+- Update requirement on domhub-tools (201) in RPM
+- If tcal succeeds but data fails quality check during quadtool,
+  don't fail DOM, but report DOM as POOR.
+- Allow quadtool to handle negative DOR current values
+- Require each echo-test to take < 15 minutes.  If configboot exceeds
+  the limit, tag DOM as POOR.  If any other exceeds, tag as BAD.
+- Allow subset of communicating DOMs to be passed to MJB.  Capture MJB
+  stderr as well as output.
+- Add readgps to require check on correct GPS times (1 second delta required
+  after the first 15 readouts).
+- Change tcaltest to make sure DOR TX and RX clock values always increase
+  (except for 48 bit rollover)
+
+============================================================================
 
 V00-01-01  11/10/05
+Requires: domhub-tools 101 or greater
 - Make readwrite show detailed dumps of sent/recv'd msgs
   when error occurs
 - Add -w option to readwrite which causes readwrite to wait 3

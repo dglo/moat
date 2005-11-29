@@ -9,7 +9,7 @@ Group: System Environment/Base
 BuildRoot: %{_tmppath}/%{name}-root
 Prefix: %{_prefix}
 Requires: perl > 5.0
-Requires: domhub-tools >= 100
+Requires: domhub-tools >= 201
 
 %description
 IceCube MOAT testing applications
