@@ -11,6 +11,10 @@ Requires: domhub-tools 201 or greater
 - Allow quadtool to handle negative DOR current values
 - Require each echo-test to take < 15 minutes.  If configboot exceeds
   the limit, tag DOM as POOR.  If any other exceeds, tag as BAD.
+- Allow subset of communicating DOMs to be passed to MJB.  Capture MJB
+  stderr as well as output.
+- Add readgps to require check on correct GPS times (1 second delta required
+  after the first 15 readouts).
 
 ============================================================================
 
