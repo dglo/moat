@@ -9,6 +9,8 @@ Requires: domhub-tools 201 or greater
 - If tcal succeeds but data fails quality check during quadtool,
   don't fail DOM, but report DOM as POOR.
 - Allow quadtool to handle negative DOR current values
+- Require each echo-test to take < 15 minutes.  If configboot exceeds
+  the limit, tag DOM as POOR.  If any other exceeds, tag as BAD.
 
 ============================================================================
 

@@ -45,7 +45,8 @@ my $maxICCIs                 = 100;
 my $maxRETX                  = minscale(300); 
 my $maxBADSEQ                = minscale(300);
 my $numTcals                 = minscale(1000);
-
+my $maxEchoDurationSecs      = 10+minscale(15*60); # max duration 15 minutes for full echotest
+                                                   # if noise free, should be ~2 minutes.
 $maxRETX   = 10 if $maxRETX   < 10; # Give a little more elbow room for short runs
 $maxBADSEQ = 10 if $maxBADSEQ < 10; #  
 
@@ -83,6 +84,7 @@ sub addreason;
 sub reasons;
 sub getCardProc;
 sub hadBadTcals;
+sub timecmd;
 
 print "Welcome to $0, by jacobsen\@npxdesigns.com.\n";
 warnIfRunning; 
@@ -597,7 +599,20 @@ sub doDom {
 	    resetComstats($card, $pair, $dom);
 	    logmsg "$card$pair$dom $sbi echo test ...\n";
 	    $cmd = "/usr/local/bin/readwrite HUB $card$pair$dom -w -s $numEchoMessagesPerFW 2>&1";
-	    $result = `$cmd`;
+	    $result = timecmd $maxEchoDurationSecs, $cmd;
+	    if($result eq "timeout") { # DOM is POOR if configboot, else BAD
+		if($sbi eq "configboot.sbi") {
+		    iffyDom($pair, $dom, "configboot echo test took too long");
+		} else {
+		    print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi): "
+			.    "test duration too long!\n";
+		    print DL comstat($card,$pair,$dom);
+		    print DL fpga($card);
+		    failDom($pair,$dom,"echo test took too long ($sbi)");
+		    last;
+		}
+	    }
+		
 	    if($result !~/SUCCESS/) {
 		print DL "\nCard $card pair $pair DOM $dom: Failed echo test ($sbi):\n"
 		    .    "$result\n";
@@ -1022,4 +1037,15 @@ sub hadBadTcals {
     } else {
 	return 1;
     }
+}
+
+
+sub timecmd { 
+    my $tout = shift; my $str = shift;
+    return "invalid args" unless ($tout > 0 && defined $str);
+    $SIG{ALRM} = sub { die "timeout" };
+    my $output;
+    eval "alarm $tout; \$output = `$str`; alarm(0);";
+    return "timeout" if $@ =~ /timeout/;
+    return $output;
 }
