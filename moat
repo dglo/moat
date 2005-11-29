@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.17 2005-10-03 21:37:38 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.18 2005-11-29 23:58:39 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -17,6 +17,7 @@ my $relsecs    = 120; # 2 min
 my $cbsecs     = 120; # 2 min
 my $savtsecs   = 120; # 2 min
 my $domappsecs = 120; # 2 min
+my $mjbhrs     = 6;   # Default is 6 hrs MJB
 my $skipmjb;
 my $fixsingle;
 my $loopback;
@@ -167,11 +168,15 @@ print LOG "      CVS $id\n";
 
 my $have_failure = 0;
 
+my $moat_top = `pwd`; chomp $moat_top;
+
 for(my $iter=0; $iter<$n; $iter++) {
     print LOG "\n\nMOAT test iteration $iter...\n";
     my $iterd = sprintf("test%03d",$iter);
     mkdir $iterd || mydie "Can't mkdir $iterd: $!\n";
     chdir $iterd || mydie "Can't chdir $iterd: $!\n";
+
+    $iterd = `pwd`; chomp $iterd; # fully qualify to return here
 
     if($cbsecs > 0) {
 	#### stagedtests (echo test) of configboot 
@@ -187,12 +192,12 @@ for(my $iter=0; $iter<$n; $iter++) {
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir ".." || mydie "Can't chdir ..: $!\n";
+	chdir $iterd;
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests/echo test with configboot firmware FAILED".
 		" on trial $iter.\n";
 	    $have_failure = 1;
-	    chdir "..";
+	    chdir $moat_top;
 	    last;
 	}
     }
@@ -211,11 +216,11 @@ for(my $iter=0; $iter<$n; $iter++) {
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir ".." || mydie "Can't chdir ..: $!\n";
+	chdir $iterd;
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir "..";
+	    chdir $moat_top;
 	    last;
 	}
     }
@@ -234,11 +239,11 @@ for(my $iter=0; $iter<$n; $iter++) {
 	system "$stcmd 2>&1 > st.out";
 	my $stresult = `tail -1 st.out`;
 	print LOG $stresult;
-	chdir ".." || mydie "Can't chdir ..: $!\n";
+	chdir $iterd;
 	if($stresult !~ /SUCCESS/) {
 	    print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir "..";
+	    chdir $moat_top;
 	    last;
 	}
     }
@@ -257,39 +262,86 @@ for(my $iter=0; $iter<$n; $iter++) {
         system "$stcmd 2>&1 > st.out";
         my $stresult = `tail -1 st.out`;
         print LOG $stresult;
-        chdir ".." || mydie "Can't chdir ..: $!\n";
+	chdir $iterd;
         if($stresult !~ /SUCCESS/) {
             print LOG "\n\nStagedtests (echo+tcal) FAILED on iteration $iter.\n";
             $have_failure = 1;
-            chdir "..";
+	    chdir $moat_top;
             last;
         }
     }
 
-    if(!$skipmjb && $cmdline_doms == 0) {
+    if(!$skipmjb) {
+	my $wd = `pwd`; chomp $wd;
 	my $mjbdir = "mjb";
 	mkdir $mjbdir || mydie "Can't mkdir $mjbdir: $!\n";
 	chdir $mjbdir || mydie "Can't chdir $mjbdir: $!\n";
-	my $wdpath = `pwd`; chomp $wdpath;
-	my $mjb_results = "$wdpath/mjb_results.dat";
-	my $mjbcmd = "/usr/local/bin/run-mjb $mjb_results"; 
 	print LOG "\n\nMOAT: Starting mjb...\n";
+	my $mjb_results_dir = `pwd`; chomp $mjb_results_dir;
+	my $mjb_results = "$mjb_results_dir/mjb_results.dat";
+	my $mjb_stderr  = "$mjb_results_dir/mjb_stderr.dat";
+	off_all;
+	on_all;
+	# Make sure all requested DOMs communicate
+	my %iscom;
+	my $domarg;
+	my $have_communicating;
+	foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
+	    if(`cat $pf` =~ /is communicating/) {
+		if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
+		    $iscom{"$1$2$3"} = 1;
+		    $have_communicating++;
+		}
+	    }
+	}
+	if(!$have_communicating) {
+	    print LOG "No DOMs communicating - won't start MJB.\n";
+	    print LOG "(Pre-)MJB FAILED on iteration $iter.\n";
+	    $have_failure = 1;
+	    chdir $moat_top;
+	    last;
+	}
+	if(! @doms) {
+	    $domarg = "all";
+	} else {
+	    my $had_uncommunicative = 0;
+	    foreach my $dom (@doms) {
+		$dom =~ tr/[a-z]/[A-Z]/;
+		if($iscom{$dom}) {
+		    $domarg .= "$dom ";
+		} else {
+		    print LOG "$dom is NOT communicating!\n";
+		    $had_uncommunicative++;
+		    last;
+		}
+	    }
+	    if($had_uncommunicative) {
+		print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
+		$have_failure = 1;
+		chdir $moat_top;
+		last;
+	    }
+	}
+	chdir "/usr/local/share/domhub-testing";
 	system "echo 0 > /proc/driver/domhub/verbose";
-	system "$mjbcmd 2>&1 > mjb.out";
+	system("./mjb.sh -h $mjbhrs $domarg 2> $mjb_stderr > $mjb_results");
+	off_all;
+	system "./results-qry.sh $mjb_results all >& $mjb_results_dir/mjb.out";
 	system "echo 1 > /proc/driver/domhub/verbose";
+	chdir $mjb_results_dir;
 	my $mjbresult = `cat mjb.out`;
 	print LOG $mjbresult;
-	chdir ".." || mydie "Can't chdir ..: $!\n";
+	chdir $iterd;
 	if($mjbresult =~ /FAIL/) {
 	    print LOG "\n\nmjb FAILED on iteration $iter.\n";
 	    $have_failure = 1;
-	    chdir "..";
+	    chdir $moat_top;
 	    last;
 	}
     }
 
     #### Done with tests this iteration
-    chdir ".." || mydie "Can't chdir ..: $!\n";
+    chdir $moat_top;
 
     print LOG "MOAT: Test iteration $iter succeeded.\n";
 }
@@ -300,12 +352,12 @@ off_all;
 my $now = scalar localtime;
 if($have_failure) {
     print LOG "\n\n\nMOAT: Tests ended with FAILURE at $now.\n";
-    open FAIL, ">FAIL" || mydie "Can't open status file FAIL: $!\n";
+    open (FAIL, ">$moat_top/FAIL") or mydie "Can't open status file $moat_top/FAIL: $!\n";
     print FAIL " ";
     close FAIL;
 } else {
     print LOG "\n\n\nMOAT: Tests ended SUCCESSFULLY at $now.\n";
-    open SUCC, ">SUCCESS" || mydie "Can't open status file SUCCESS: $!\n";
+    open (SUCC, ">$moat_top/SUCCESS") or mydie "Can't open status file $moat_top/SUCCESS: $!\n";
     print SUCC " ";
     close SUCC;
 }
