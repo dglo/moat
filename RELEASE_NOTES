@@ -1,6 +1,13 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
+V00-02-01  12/07/05
+Requires: domhub-tools 201 or greater
+- Added optional power-cycling test to MOAT, a la "cold reboot" test at 
+  FAT.  Use with care.
+
+============================================================================
+
 V00-02-00  11/29/05
 Requires: domhub-tools 201 or greater
 - Report comms parameters used for each test
