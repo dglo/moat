@@ -4,11 +4,12 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.18 2005-11-29 23:58:39 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.19 2005-12-07 23:38:30 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
 use Getopt::Long;
+use Fcntl;
 
 sub off_all; sub on_all;
 sub check_for_running_processes; sub kill_running_processes;
@@ -18,6 +19,7 @@ my $cbsecs     = 120; # 2 min
 my $savtsecs   = 120; # 2 min
 my $domappsecs = 120; # 2 min
 my $mjbhrs     = 6;   # Default is 6 hrs MJB
+my $nboot      = 0;
 my $skipmjb;
 my $fixsingle;
 my $loopback;
@@ -44,6 +46,8 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	                        (default $savtsecs)
 	   [-a|-domappsecs]     Number of seconds for "release" stagedtests runs
 	                        versus domapp.sbi (default $domappsecs)
+	   [-b <Nt>]            Perform cold reboot test on selected DOMs <Nt> times
+                                (WARNING: POWER CYCLES ALL DOMS EACH Nt TIME!!!)
            [-v]                 Show MOAT release version
 
 EOF
@@ -74,6 +78,7 @@ GetOptions("help|h"          => \$help,
 	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
+	   "b=i"             => \$nboot,
 	   "n=i"             => \$n) || die usage;
 
 die usage if $help;
@@ -271,6 +276,22 @@ for(my $iter=0; $iter<$n; $iter++) {
         }
     }
 
+    if($nboot > 0) {
+	off_all;
+	my $crbd = "reboot_tests";
+	mkdir $crbd || mydie "Can't mkdir $crbd: $!\n";
+	chdir $crbd || mydie "Can't chdir $crbd: $!\n";
+	print LOG "\n\nMOAT: Starting cold reboot tests...\n";
+	my $bootlog = "boottests.log";
+	if(do_cold_reboot_test($nboot, $bootlog, @doms)) {
+	    print LOG "\n\nCold reboot tests FAILED.\n";
+	    $have_failure = 1;
+	    chdir $moat_top;
+	    last;
+	}
+	chdir $iterd;
+    }
+
     if(!$skipmjb) {
 	my $wd = `pwd`; chomp $wd;
 	my $mjbdir = "mjb";
@@ -381,7 +402,6 @@ sub have_running_processes {
            $ps =~ m|/usr/local/bin/tcaltest|  ||
 	   $ps =~ m|/usr/local/bin/echo-loop|  ||
 	   $ps =~ m|/usr/local/bin/echo-test|  ||
-	   $ps =~ m|/usr/local/bin/run-mjb|   ||
 	   $ps =~ m|/bin/bash ./mjb.sh|       ||
 	   $ps =~ m|/usr/local/bin/readgps|   ||
 	   $ps =~ m|/usr/local/bin/moat|      ||
@@ -414,6 +434,109 @@ sub kill_running_processes {
 	print "Nothing running to kill.\n";
     }
 }    
-	   
+
+sub get_communicating_doms {
+    my %iscom_hash;
+    foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
+	if(`cat $pf` =~ /is communicating/) {
+	    if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
+		$iscom_hash{"$1$2$3"} = 1;
+	    }
+	}
+    }
+    return %iscom_hash;
+}
+
+sub comstat { 
+    my $dom = shift; return "" unless $dom =~ /(\d)(\d)(\w)/;
+    my $pf = "/proc/driver/domhub/card$1/pair$2/dom$3/comstat";
+    return "proc file not found!\n" unless -e $pf;
+    return `cat $pf`;
+}
+
+sub fpga {
+    my $dom = shift; return "" unless $dom =~ /(\d)(\d)(\w)/;
+    my $pf = "/proc/driver/domhub/card$1/fpga";
+    return "proc file not found!\n" unless -e $pf;
+    return `cat $pf`;
+}
+
+sub allstats {
+    return "" unless @_;
+    my $dom = shift;
+    return comstat($dom).fpga($dom)."\n\n".allstats(@_);
+}
+
+sub do_cold_reboot_test {
+    my $nboot   = shift; return 1 unless defined $nboot;
+    my $bootlog = shift; return 1 unless defined $bootlog;
+    my @doms    = @_; 
+    open(BL, ">$bootlog") || mydie "Can't open $bootlog: $!\n";
+    print BL "Will do cold reboot tests ($nboot trials)...\n";
+    my $domarg;
+    if(@doms < 1) {
+	on_all;
+	my %hash = get_communicating_doms;
+	@doms = keys %hash;
+	off_all;
+	$domarg = "all";
+    } else {
+	$domarg = join " ", @doms;
+    }
+    print BL "Communicating DOMs: ".(join ' ', @doms)."\n";
+    foreach my $trial(0..($nboot-1)) {
+	print BL "Trial $trial... ";
+	on_all;
+	my %thistrialcomm = get_communicating_doms;
+	
+	# Open each file and start select loop
+	foreach my $dom(@doms) {
+	    if(! $thistrialcomm{$dom}) {
+		print BL "\nTrial $trial DOM $dom is NOT communicating!\n";
+		print BL comstat($dom);
+		print BL fpga($dom);
+		print BL "Test FAILED.\n";
+		close BL;
+		off_all;
+		return 1;
+	    }
+	}
+	my $secmd = "se.pl $domarg r r";
+	my $seresult = `$secmd 2>&1`;
+	if($seresult !~ /SUCCESS/) {
+	    print BL "\nTrial $trial transition from configboot->iceboot FAILED!\n";
+	    print BL $seresult;
+	    print BL allstats(sort @doms);
+	    print BL "Test FAILED.\n";
+	    close BL;
+	    off_all;
+	    return 1;
+	}
+
+	$secmd = "se.pl -s $domarg readTemp\\\ prtTemp "
+	    .    ".+\\\?temperature:\\\ \\\(\\\\\\S+\\\ degrees\\\)";
+        $seresult = `$secmd 2>&1`;
+	print BL "\n$seresult";
+
+	foreach my $dom(@doms) {
+	    $dom =~ /(\d)(\d)(\w)/;
+	    my $df = "/dev/dhc$1"."w$2"."d$3";
+	    if($seresult !~ /$df: OK \(\S+ degrees\)./s) {
+		print BL "\nTrial $trial temperature read FAILED ($dom / $df).\n";
+		print BL $seresult;
+		print BL allstats(sort @doms);
+		print BL "Test FAILED.\n";
+		close BL;
+		off_all;
+		return 1;
+	    }
+	}
+	print BL "OK.\n";
+	off_all;
+    }
+    close BL;
+    return 0;
+}
+
 __END__
 

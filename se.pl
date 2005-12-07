@@ -5,11 +5,12 @@
 # 
 # Send data to multiple DOMs and look for correct response
 #
-# $Id: se.pl,v 1.4 2005-10-31 19:50:38 jacobsen Exp $
+# $Id: se.pl,v 1.5 2005-12-07 23:34:38 jacobsen Exp $
 
 use Fcntl;
 use strict;
 use IO::Select;
+use Getopt::Long;
 
 my @domdevs;
 my %cardof;
@@ -17,12 +18,19 @@ my %pairof;
 my %domof;
 my %nameof;
 my %fhof;
-
+my $suppress;
+my $help;
 sub usage { return <<EOF;
-Usage: $0 <dom|all> [dom] ... <sendpat> <expectpat>
+Usage: $0 [-s] <dom|all> [dom] ... <sendpat> <expectpat>
        dom is in the form 00a, 00A or /dev/dhc0w0dA
+       -s: suppress all but matching pattern output
 EOF
 ;}
+
+GetOptions("help|h"    => \$help,
+	   "s"         => \$suppress) || die usage;
+
+die usage if $help;
 
 my $recvpat = pop @ARGV; die usage unless defined $recvpat;
 my $sendpat = pop @ARGV; die usage unless defined $sendpat;
@@ -119,10 +127,14 @@ while(abs(time - $now) < 10) {
 	    my $printable = $buf;
 	    $printable =~ s/\r/\\r/g;
 	    $printable =~ s/\n/\\n/g;
-	    print $printable;
+	    print $printable unless $suppress;
 	    $dataread{$fname} .= $printable;
 	    if($dataread{$fname} =~ /$recvpat/) {
-		print " $fname: OK\n";
+		if(defined $1) {
+		    print " $fname: OK ($1).\n";
+		} else {
+		    print " $fname: OK.\n";
+		}
 		$selector->remove($fh);
 		$datadone{$fname} = 1;
 		$todo--;
