@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.21 2005-12-08 20:31:21 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.22 2005-12-08 20:32:39 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -532,6 +532,7 @@ sub do_cold_reboot_test {
 	    print BL "\nTrial $trial transition from configboot->iceboot FAILED!\n";
 	    print BL $seresult;
 	    print BL allstats(sort @doms);
+	    print BL "Currents at time of failure:\n".card_currents;
 	    print BL "Test FAILED.\n";
 	    close BL;
 	    off_all unless $skipoff;
@@ -546,6 +547,7 @@ sub do_cold_reboot_test {
 		    .    "configboot->iceboot.\n";
 		print BL comstat($dom);
 		print BL fpga($dom);
+		print BL "Currents at time of failure:\n".card_currents;
 		print BL "Test FAILED.\n";
 		close BL;
 		off_all unless $skipoff;
@@ -567,6 +569,7 @@ sub do_cold_reboot_test {
 		print BL "\nTrial $trial temperature read FAILED ($dom / $df).\n";
 		print BL $seresult;
 		print BL allstats(sort @doms);
+		print BL "Currents at time of failure:\n".card_currents;
 		print BL "Test FAILED.\n";
 		close BL;
 		off_all unless $skipoff;
