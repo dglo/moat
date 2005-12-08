@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.20 2005-12-08 17:47:28 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.22 2005-12-08 20:32:39 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -23,7 +23,8 @@ my $nboot      = 0;
 my $skipmjb;
 my $fixsingle;
 my $loopback;
-my $skipkbchk=0;
+my $skipkbchk = 0;
+my $skipoff   = 0;
 
 sub usage { return <<EOF;
 Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
@@ -48,6 +49,7 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	                        versus domapp.sbi (default $domappsecs)
 	   [-b <Nt>]            Perform cold reboot test on selected DOMs <Nt> times
                                 (WARNING: POWER CYCLES ALL DOMS EACH Nt TIME!!!)
+           [-o]                 Skip "off all" if cold reboot test fails
            [-v]                 Show MOAT release version
 
 EOF
@@ -78,6 +80,7 @@ GetOptions("help|h"          => \$help,
 	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
+	   "o"               => \$skipoff,
 	   "b=i"             => \$nboot,
 	   "n=i"             => \$n) || die usage;
 
@@ -368,7 +371,7 @@ for(my $iter=0; $iter<$n; $iter++) {
 }
 
 print LOG "MOAT: Powering off all DOMs.\n";
-off_all;
+off_all unless $skipoff;
 
 my $now = scalar localtime;
 if($have_failure) {
@@ -467,12 +470,29 @@ sub allstats {
     return comstat($dom).fpga($dom)."\n\n".allstats(@_);
 }
 
+sub card_currents {
+    my $lastcard;
+    my $s;
+    foreach my $cp (</proc/driver/domhub/card?/pair?/current>) {
+	$cp =~ m|/proc/driver/domhub/card(\d)/pair(\d)/current|;
+	my $card = $1;
+	my $pair = $2;
+	if((defined $lastcard) && $lastcard ne $card) { $s.= " mA\n"; }
+	$lastcard = $card;
+	my $curtext = `cat $cp`; chomp $curtext;
+	$curtext = $1 if $curtext =~ /current is (\S+) mA/;
+	$s .= sprintf("  $card$pair: %3s ", $curtext);
+    }
+    $s .= " mA\n";
+}
+
 sub do_cold_reboot_test {
     my $nboot   = shift; return 1 unless defined $nboot;
     my $bootlog = shift; return 1 unless defined $bootlog;
     my @doms    = @_; 
     open(BL, ">$bootlog") || mydie "Can't open $bootlog: $!\n";
     print BL "Will do cold reboot tests ($nboot trials)...\n";
+
     my $domarg;
     if(@doms < 1) {
 	on_all;
@@ -485,33 +505,57 @@ sub do_cold_reboot_test {
     }
     print BL "Communicating DOMs: ".(join ' ', @doms)."\n";
     foreach my $trial(0..($nboot-1)) {
-	print BL "Trial $trial... ";
+	print BL "Trial $trial...\n";
+	print BL "Currents before pwr_on:\n".card_currents;
 	on_all;
+
 	my %thistrialcomm = get_communicating_doms;
 	
 	# Open each file and start select loop
 	foreach my $dom(@doms) {
 	    if(! $thistrialcomm{$dom}) {
-		print BL "\nTrial $trial DOM $dom is NOT communicating!\n";
+		print BL "\nTrial $trial DOM $dom is NOT communicating after pwr on.\n";
 		print BL comstat($dom);
 		print BL fpga($dom);
 		print BL "Test FAILED.\n";
 		close BL;
-		off_all;
+		off_all unless $skipoff;
 		return 1;
 	    }
 	}
+
+	print BL "Currents after power on, before configboot->iceboot:\n".card_currents;
+
 	my $secmd = "se.pl $domarg r r.+\\\?\\\>";
 	my $seresult = `$secmd 2>&1`;
 	if($seresult !~ /SUCCESS/) {
 	    print BL "\nTrial $trial transition from configboot->iceboot FAILED!\n";
 	    print BL $seresult;
 	    print BL allstats(sort @doms);
+	    print BL "Currents at time of failure:\n".card_currents;
 	    print BL "Test FAILED.\n";
 	    close BL;
-	    off_all;
+	    off_all unless $skipoff;
 	    return 1;
 	}
+
+	%thistrialcomm = get_communicating_doms;
+	# Open each file and start select loop
+	foreach my $dom(@doms) {
+	    if(! $thistrialcomm{$dom}) {
+		print BL "\nTrial $trial DOM $dom is NOT communicating after "
+		    .    "configboot->iceboot.\n";
+		print BL comstat($dom);
+		print BL fpga($dom);
+		print BL "Currents at time of failure:\n".card_currents;
+		print BL "Test FAILED.\n";
+		close BL;
+		off_all unless $skipoff;
+		return 1;
+	    }
+	}
+
+	print BL "Currents after iceboot, before reading temperature:\n".card_currents;
 
 	$secmd = "se.pl -s $domarg readTemp\\\ prtTemp "
 	    .    ".+\\\?temperature:\\\ \\\(\\\\\\S+\\\ degrees\\\)";
@@ -525,13 +569,14 @@ sub do_cold_reboot_test {
 		print BL "\nTrial $trial temperature read FAILED ($dom / $df).\n";
 		print BL $seresult;
 		print BL allstats(sort @doms);
+		print BL "Currents at time of failure:\n".card_currents;
 		print BL "Test FAILED.\n";
 		close BL;
-		off_all;
+		off_all unless $skipoff;
 		return 1;
 	    }
 	}
-	print BL "OK.\n";
+	print BL "OK\n";
 	off_all;
     }
     close BL;
