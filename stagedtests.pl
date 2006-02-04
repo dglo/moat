@@ -684,7 +684,7 @@ sub iceboot_all {
     for($i=0; $i<$ndoms; $i++) {
         $secmd .= $card{$i}.$pair{$i}.$dom{$i}." ";
     }
-    $secmd .= "r r";
+    $secmd .= "r r.+\\\?\\\>";
     # $secmd .= ".+\\>" unless $loopback;
     print "$secmd...\n";
     my $tf = "/tmp/st$$"."_se.tmp";
