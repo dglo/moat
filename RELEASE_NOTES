@@ -1,6 +1,12 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
+V00-02-04  2/5/06
+Requires: domhub-tools 201 or greater
+- Fix transition from configboot to iceboot in stagedtests.pl
+
+============================================================================
+
 V00-02-03  12/08/05
 Requires: domhub-tools 201 or greater
 - More debugging information provided for cold reboot tests
