@@ -5,7 +5,7 @@
 # 
 # Send data to multiple DOMs and look for correct response
 #
-# $Id: se.pl,v 1.5 2005-12-07 23:34:38 jacobsen Exp $
+# $Id: se.pl,v 1.6 2006-03-31 22:50:53 jacobsen Exp $
 
 use Fcntl;
 use strict;
@@ -83,14 +83,19 @@ $|++;
 
 my $selector = IO::Select->new();
 
+my %openfail;
+
 my $max_write_retries = 100;
 foreach my $domdev (@domdevs) {
     # print "$domdev\n";
     die "Couldn't find DOM device file $domdev" unless -e $domdev;
 
     my $dd = anfh; # Anonymous filehandle
-    sysopen($dd, $domdev, O_RDWR)
-	|| die "Can't open $domdev: $!\n";
+    if(!sysopen($dd, $domdev, O_RDWR)) {
+	warn "WARNING: open failed on $domdev!\n";
+	$openfail{$domdev} = 1;
+	next;
+    } 
 
     $selector->add($dd);
     my $towrite = length($sendpat);
@@ -113,7 +118,7 @@ my %reply;
 my @ready;
 my %dataread;
 my %datadone;
-my $todo = @domdevs;
+my $todo = @domdevs - scalar keys %openfail;;
 
 my $now = time;
 while(abs(time - $now) < 10) {
@@ -147,15 +152,17 @@ while(abs(time - $now) < 10) {
 # Close each
 foreach my $domdev (@domdevs) {
     # print "Close $domdev: ";
-    close $fhof{$domdev};
+    close $fhof{$domdev} unless $openfail{$domdev};;
 }
 
-if($todo == 0) {
+if($todo == 0 && (keys %openfail) == 0) {
     print "SUCCESS.\n";
 } else {
-    print "FAILURE: $todo DOMs did not give expected reply:\n";
+    print "FAILURE:\n";
     foreach my $fname(@domdevs) {
-	if(! $datadone{$fname}) {
+	if($openfail{$fname}) {
+	    print "\t$fname failed to open.\n";
+	} elsif(! $datadone{$fname}) {
 	    if($dataread{$fname} eq "") {
 		print "\t$fname got NO DATA.\n"; 
 	    } else {
