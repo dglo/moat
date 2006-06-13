@@ -192,17 +192,17 @@ int main(int argc, char ** argv) {
     default:  fprintf(stdout," UNKNOWN!"); break;
     }
     fprintf(stdout," DOR(%d) ", icard);
-    t = 0L;
+    t = 0ULL;
     for(i=QUALPOS+1;i<TSBUFLEN;i++) {
       fprintf(stdout,"%02x", (unsigned char) tsbuf[i]);
       t <<= 8;
       t |= (unsigned char) tsbuf[i];
     }
-    unsigned long dt = (unsigned long) (t - tlast);
+    unsigned long long dt = (t - tlast);
     if(dodiff && tscount > 0) {
-      fprintf(stdout," dt=%lu ticks", dt);
+      fprintf(stdout," dt=%llu ticks", dt);
     }
-#   define WANT_DT 20000000UL
+#   define WANT_DT 20000000ULL
     if((doflag || dodt) && tscount > skipdt && dt != WANT_DT) {
       fprintf(stdout," BAD DT!!");
       had_bad_dt = 1;
@@ -211,7 +211,7 @@ int main(int argc, char ** argv) {
     fflush(stdout);
 
     if(dodt && tscount > skipdt && dt != WANT_DT) {
-      fprintf(stderr,"readgps ERROR: %s: bad DOR time difference dt=%lu, wanted %lu.\n",
+      fprintf(stderr,"readgps ERROR: %s: bad DOR time difference dt=%llu, wanted %llu.\n",
 	      pfnam, dt, WANT_DT);
       die = 1;
     }      
