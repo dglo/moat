@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.23 2006-09-22 20:27:04 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.24 2006-09-22 20:32:54 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -36,7 +36,7 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-g|-testgps]        Test GPS functions as part of stagedtests (10 MHz only!)
 	   [-f|-fixsingle]      Single packet length for stagedtests initial
 	                        echo test (default: random)
-	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
+	   [-X]                 Skip check on prompt for iceboot (for loopback firmware)
 	   [-i|-skipkbchk]      Skip check on minimum bandwidth
 	   [-k|-kill]           Kill all test processes
            [-w]                 Perform echotests using readwrite (default: echo-test)
@@ -86,7 +86,7 @@ GetOptions("help|h"          => \$help,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
 	   "w"               => \$useReadwrite,
-	   "loopback|X"      => \$loopback,
+	   "X"               => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
 	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
