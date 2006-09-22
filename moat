@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.24 2006-09-22 20:32:54 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.25 2006-09-22 20:51:03 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -321,11 +321,13 @@ for(my $iter=0; $iter<$n; $iter++) {
 	my %iscom;
 	my $domarg;
 	my $have_communicating;
+	my $find_doms = ((scalar @doms)==0) ? 1 : 0;
 	foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
 	    if(`cat $pf` =~ /is communicating/) {
 		if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
 		    $iscom{"$1$2$3"} = 1;
 		    $have_communicating++;
+		    push @doms, "$1$2$3";
 		}
 	    }
 	}
@@ -336,36 +338,44 @@ for(my $iter=0; $iter<$n; $iter++) {
 	    chdir $moat_top;
 	    last;
 	}
-	if(! @doms) {
-	    $domarg = "all";
-	} else {
-	    my $had_uncommunicative = 0;
-	    foreach my $dom (@doms) {
-		$dom =~ tr/[a-z]/[A-Z]/;
-		my $card;
-		if($dom =~ /(\d+)\d+\w+/) {
-		    $card = $1;
-		} else {
-		    print LOG "Internal error, $dom not in CWD format.\n";
-		    last;
-		}
-		if($iscom{$dom} && (!$uppermjb || $card <= 3) && (!$lowermjb || $card >= 4)) {
-		    $domarg .= "$dom ";
-		} else {
-		    print LOG "$dom is NOT communicating!\n";
-		    $had_uncommunicative++;
-		    last;
-		}
+	my $had_uncommunicative = 0;
+	foreach my $dom (@doms) {
+	    $dom =~ tr/[a-z]/[A-Z]/;
+	    my $card;
+	    if($dom =~ /(\d+)\d+\w+/) {
+		$card = $1;
+	    } else {
+		print LOG "Internal error, $dom not in CWD format.\n";
+		last;
 	    }
-	    if($had_uncommunicative) {
-		print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
-		$have_failure = 1;
-		chdir $moat_top;
+	    if($iscom{$dom}) {
+		if($uppermjb && $card > 3) {
+		    next;
+		}
+		if($lowermjb && $card < 4) {
+		    next;
+		}
+		$domarg .= "$dom ";
+	    } else {
+		print LOG "$dom is NOT communicating!\n";
+		$had_uncommunicative++;
 		last;
 	    }
 	}
+	if($had_uncommunicative) {
+	    print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
+	    $have_failure = 1;
+	    chdir $moat_top;
+	    last;
+	}
 	chdir "/usr/local/share/domhub-testing";
 	system "echo 0 > /proc/driver/domhub/verbose";
+	if($domarg eq "") {
+	    print LOG "No communicating DOMs found in the region requested.\n";
+	    $have_failure = 1;
+            chdir $moat_top;
+	    last;
+	} 
 	system("./mjb.sh -h $mjbhrs $domarg 2> $mjb_stderr > $mjb_results");
 	off_all;
 	system "./results-qry.sh $mjb_results all >& $mjb_results_dir/mjb.out";
