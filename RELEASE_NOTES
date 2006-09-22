@@ -1,6 +1,9 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
+NEXT RELEASE:
+- Allow CWD arguments to moat14 and shortmoat
+
 V00-02-05  3/31/06
 Requires: domhub-tools 201 or greater
 - Don't bail in se.pl if open fails on one of the /dev files
