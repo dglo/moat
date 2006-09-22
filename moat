@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.22 2005-12-08 20:32:39 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.23 2006-09-22 20:27:04 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -21,6 +21,8 @@ my $domappsecs = 120; # 2 min
 my $mjbhrs     = 6;   # Default is 6 hrs MJB
 my $nboot      = 0;
 my $skipmjb;
+my $uppermjb;
+my $lowermjb;
 my $fixsingle;
 my $loopback;
 my $skipkbchk = 0;
@@ -36,7 +38,6 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	                        echo test (default: random)
 	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
 	   [-i|-skipkbchk]      Skip check on minimum bandwidth
-           [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
            [-w]                 Perform echotests using readwrite (default: echo-test)
 	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
@@ -51,6 +52,14 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
                                 (WARNING: POWER CYCLES ALL DOMS EACH Nt TIME!!!)
            [-o]                 Skip "off all" if cold reboot test fails
            [-v]                 Show MOAT release version
+
+           [-s|-skipmjb]        Skip MJB test 
+	   [-u]                 Run MJB on upper DOMs only
+           [-l]                 Run MJB on lower DOMs only
+
+                                Either -s, -u or -l must be given, 
+                                or MJB may fail on large numbers of DOMs.
+
 
 EOF
 ;
@@ -67,6 +76,8 @@ my $showversion;
 
 GetOptions("help|h"          => \$help,
 	   "skipmjb|s"       => \$skipmjb,
+	   "u"               => \$uppermjb,
+	   "l"               => \$lowermjb,
            "dorfreq|d=i"     => \$dorfreq,
 	   "relsecs|r=i"     => \$relsecs,
 	   "cbsecs|c=i"      => \$cbsecs,
@@ -331,7 +342,14 @@ for(my $iter=0; $iter<$n; $iter++) {
 	    my $had_uncommunicative = 0;
 	    foreach my $dom (@doms) {
 		$dom =~ tr/[a-z]/[A-Z]/;
-		if($iscom{$dom}) {
+		my $card;
+		if($dom =~ /(\d+)\d+\w+/) {
+		    $card = $1;
+		} else {
+		    print LOG "Internal error, $dom not in CWD format.\n";
+		    last;
+		}
+		if($iscom{$dom} && (!$uppermjb || $card <= 3) && (!$lowermjb || $card >= 4)) {
 		    $domarg .= "$dom ";
 		} else {
 		    print LOG "$dom is NOT communicating!\n";
