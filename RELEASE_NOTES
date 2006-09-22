@@ -2,7 +2,10 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
 NEXT RELEASE:
-- Allow CWD arguments to moat14 and shortmoat
+0000741: add options to moat to make MJB test only upper or lower half of string
+0000740: fix shortmoat and moat14 to accept CWD arguments (e.g., 'shortmoat 00a 01b')
+
+============================================================================
 
 V00-02-05  3/31/06
 Requires: domhub-tools 201 or greater
