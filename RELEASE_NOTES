@@ -4,6 +4,8 @@ John Jacobsen jacobsen@npxdesigns.com
 NEXT RELEASE:
 0000741: add options to moat to make MJB test only upper or lower half of string
 0000740: fix shortmoat and moat14 to accept CWD arguments (e.g., 'shortmoat 00a 01b')
+0000745: get moat -k to kill mjb subprocesses correctly
+0000744: allow for setting of mjb duration in moat
 
 ============================================================================
 
