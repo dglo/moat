@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.25 2006-09-22 20:51:03 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.26 2006-09-25 17:26:02 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -18,7 +18,6 @@ my $relsecs    = 120; # 2 min
 my $cbsecs     = 120; # 2 min
 my $savtsecs   = 120; # 2 min
 my $domappsecs = 120; # 2 min
-my $mjbhrs     = 6;   # Default is 6 hrs MJB
 my $nboot      = 0;
 my $skipmjb;
 my $uppermjb;
@@ -56,9 +55,9 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
            [-s|-skipmjb]        Skip MJB test 
 	   [-u]                 Run MJB on upper DOMs only
            [-l]                 Run MJB on lower DOMs only
-
                                 Either -s, -u or -l must be given, 
                                 or MJB may fail on large numbers of DOMs.
+           [-m <s>]             Set MJB duraction to <s> seconds
 
 
 EOF
@@ -69,6 +68,7 @@ my $help;
 my $dorfreq;
 my $testgps;
 my $kill;
+my $mjbsecs = 6*3600;
 my $useReadwrite = 0;
 my $n = 1;
 my @exclude;
@@ -88,6 +88,7 @@ GetOptions("help|h"          => \$help,
 	   "w"               => \$useReadwrite,
 	   "X"               => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
+	   "m=i"             => \$mjbsecs,
 	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
@@ -376,7 +377,7 @@ for(my $iter=0; $iter<$n; $iter++) {
             chdir $moat_top;
 	    last;
 	} 
-	system("./mjb.sh -h $mjbhrs $domarg 2> $mjb_stderr > $mjb_results");
+	system("./mjb.sh -s $mjbsecs $domarg 2> $mjb_stderr > $mjb_results");
 	off_all;
 	system "./results-qry.sh $mjb_results all >& $mjb_results_dir/mjb.out";
 	system "echo 1 > /proc/driver/domhub/verbose";
