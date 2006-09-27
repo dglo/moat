@@ -1,7 +1,7 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
-V00-02-06  9/15/06
+V00-02-06  9/27/06
 
  Issue    Fix/upgrade
 0000741: add options to moat to make MJB test only upper or lower half of string
