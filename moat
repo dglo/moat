@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
 # Started: Fri Aug 13 08:38:05 2004
 
-my $Id = "Id"; my $id = "$Id: moat,v 1.22 2005-12-08 20:32:39 jacobsen Exp $x";
+my $Id = "Id"; my $id = "$Id: moat,v 1.28 2006-09-25 20:00:50 jacobsen Exp $x";
 
 package MY_PACKAGE;
 use strict;
@@ -18,9 +18,10 @@ my $relsecs    = 120; # 2 min
 my $cbsecs     = 120; # 2 min
 my $savtsecs   = 120; # 2 min
 my $domappsecs = 120; # 2 min
-my $mjbhrs     = 6;   # Default is 6 hrs MJB
 my $nboot      = 0;
 my $skipmjb;
+my $uppermjb;
+my $lowermjb;
 my $fixsingle;
 my $loopback;
 my $skipkbchk = 0;
@@ -34,9 +35,8 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
 	   [-g|-testgps]        Test GPS functions as part of stagedtests (10 MHz only!)
 	   [-f|-fixsingle]      Single packet length for stagedtests initial
 	                        echo test (default: random)
-	   [-X|-loopback]       Skip check on prompt for iceboot (for loopback firmware)
+	   [-X]                 Skip check on prompt for iceboot (for loopback firmware)
 	   [-i|-skipkbchk]      Skip check on minimum bandwidth
-           [-s|-skipmjb]        Skip MJB test 
 	   [-k|-kill]           Kill all test processes
            [-w]                 Perform echotests using readwrite (default: echo-test)
 	   [-c|-cbsecs]         Number of seconds for configboot stagedtests runs 
@@ -52,6 +52,14 @@ Usage: $0  [<dom>] ....         <dom> is e.g., 00a.  Repeatable.
            [-o]                 Skip "off all" if cold reboot test fails
            [-v]                 Show MOAT release version
 
+           [-s|-skipmjb]        Skip MJB test 
+	   [-u]                 Run MJB on upper DOMs only
+           [-l]                 Run MJB on lower DOMs only
+                                Either -s, -u or -l must be given, 
+                                or MJB may fail on large numbers of DOMs.
+           [-m <s>]             Set MJB duraction to <s> seconds
+
+
 EOF
 ;
 	}
@@ -60,6 +68,7 @@ my $help;
 my $dorfreq;
 my $testgps;
 my $kill;
+my $mjbsecs = 6*3600;
 my $useReadwrite = 0;
 my $n = 1;
 my @exclude;
@@ -67,6 +76,8 @@ my $showversion;
 
 GetOptions("help|h"          => \$help,
 	   "skipmjb|s"       => \$skipmjb,
+	   "u"               => \$uppermjb,
+	   "l"               => \$lowermjb,
            "dorfreq|d=i"     => \$dorfreq,
 	   "relsecs|r=i"     => \$relsecs,
 	   "cbsecs|c=i"      => \$cbsecs,
@@ -75,8 +86,9 @@ GetOptions("help|h"          => \$help,
 	   "savetsecs|t=i"   => \$savtsecs,
 	   "fixsingle|f=i"   => \$fixsingle,
 	   "w"               => \$useReadwrite,
-	   "loopback|X"      => \$loopback,
+	   "X"               => \$loopback,
 	   "skipkbchk|i"     => \$skipkbchk,
+	   "m=i"             => \$mjbsecs,
 	   "domappsecs|a=i"  => \$domappsecs,
 	   "kill|k"          => \$kill,
 	   "v"               => \$showversion,
@@ -310,11 +322,13 @@ for(my $iter=0; $iter<$n; $iter++) {
 	my %iscom;
 	my $domarg;
 	my $have_communicating;
+	my $find_doms = ((scalar @doms)==0) ? 1 : 0;
 	foreach my $pf (</proc/driver/domhub/card?/pair?/dom?/is-communicating>) {
 	    if(`cat $pf` =~ /is communicating/) {
 		if($pf =~ m|/proc/driver/domhub/card(\d+)/pair(\d+)/dom(\w+)/is-communicating|) {
 		    $iscom{"$1$2$3"} = 1;
 		    $have_communicating++;
+		    push(@doms, "$1$2$3") if $find_doms;
 		}
 	    }
 	}
@@ -325,30 +339,47 @@ for(my $iter=0; $iter<$n; $iter++) {
 	    chdir $moat_top;
 	    last;
 	}
-	if(! @doms) {
-	    $domarg = "all";
-	} else {
-	    my $had_uncommunicative = 0;
-	    foreach my $dom (@doms) {
-		$dom =~ tr/[a-z]/[A-Z]/;
-		if($iscom{$dom}) {
-		    $domarg .= "$dom ";
-		} else {
-		    print LOG "$dom is NOT communicating!\n";
-		    $had_uncommunicative++;
-		    last;
-		}
+	my $had_uncommunicative = 0;
+	foreach my $dom (@doms) {
+	    $dom =~ tr/[a-z]/[A-Z]/;
+	    my $card;
+	    if($dom =~ /(\d+)\d+\w+/) {
+		$card = $1;
+	    } else {
+		print LOG "Internal error, $dom not in CWD format.\n";
+		last;
 	    }
-	    if($had_uncommunicative) {
-		print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
-		$have_failure = 1;
-		chdir $moat_top;
+	    if($iscom{$dom}) {
+		if($uppermjb && $card > 3) {
+		    next;
+		}
+		if($lowermjb && $card < 4) {
+		    next;
+		}
+		$domarg .= "$dom ";
+	    } else {
+		print LOG "$dom is NOT communicating!\n";
+		$had_uncommunicative++;
 		last;
 	    }
 	}
+	if($had_uncommunicative) {
+	    print LOG "At least one requested DOM uncommunicative - won't start MJB.\n";
+	    $have_failure = 1;
+	    chdir $moat_top;
+	    last;
+	}
 	chdir "/usr/local/share/domhub-testing";
 	system "echo 0 > /proc/driver/domhub/verbose";
-	system("./mjb.sh -h $mjbhrs $domarg 2> $mjb_stderr > $mjb_results");
+	if($domarg eq "") {
+	    print LOG "No communicating DOMs found in the region requested.\n";
+	    $have_failure = 1;
+            chdir $moat_top;
+	    last;
+	} 
+	my $cmd = "./mjb.sh -s $mjbsecs $domarg 2> $mjb_stderr > $mjb_results";
+        print LOG "Launching MJB: '$cmd'\n";
+	system $cmd;
 	off_all;
 	system "./results-qry.sh $mjb_results all >& $mjb_results_dir/mjb.out";
 	system "echo 1 > /proc/driver/domhub/verbose";
@@ -401,14 +432,20 @@ sub have_running_processes {
     my @ps = `ps --columns 1000 ax`;
     foreach my $ps(@ps) {
 	chomp $ps;
-	if($ps =~ m|/usr/local/bin/readwrite| ||
-           $ps =~ m|/usr/local/bin/tcaltest|  ||
-	   $ps =~ m|/usr/local/bin/echo-loop|  ||
-	   $ps =~ m|/usr/local/bin/echo-test|  ||
-	   $ps =~ m|/bin/bash ./mjb.sh|       ||
-	   $ps =~ m|/usr/local/bin/readgps|   ||
-	   $ps =~ m|/usr/local/bin/moat|      ||
-	   $ps =~ m|/usr/local/bin/stagedtests.pl|) {
+	if($ps =~ m|\b/usr/local/bin/readwrite\b| ||
+           $ps =~ m|\b/usr/local/bin/tcaltest\b|  ||
+	   $ps =~ m|\b/usr/local/bin/echo-loop\b| ||
+	   $ps =~ m|\b/usr/local/bin/echo-test\b| ||
+	   $ps =~ m|\b\./mjb.sh\b|                ||
+           $ps =~ m|\b\./mjb-sched\b|             ||
+           $ps =~ m|\b\./echo-test\b|             ||
+           $ps =~ m|\b\./throughput\b|            ||
+           $ps =~ m|\b\./versions\b|              ||
+           $ps =~ m|\bdomterm\b|                  ||
+           $ps =~ m|\bse\b|                       ||
+	   $ps =~ m|\b/usr/local/bin/readgps\b|   ||
+	   $ps =~ m|\b/usr/local/bin/moat\b|      ||
+	   $ps =~ m|\b/usr/local/bin/stagedtests.pl\b|) {
 	    my $pid = (split ' ', $ps)[0];
 	    if($pid != $$) {
 		print "Existing process \"$ps\"...\n";
