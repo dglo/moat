@@ -13,8 +13,6 @@ use strict;
 
 print "Welcome to $0.\n";
 
-die "Sorry bud, gotta be root to do this.\n" unless $< == 0;
-
 my $version = shift; chomp $version;
 sub usage;
 die usage unless defined $version;
@@ -31,10 +29,10 @@ $r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 $r = `cp -Rp moat moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 $r = `tar czf /tmp/moat-$rpmver.tgz --exclude=moat-$rpmver/CVS moat-$rpmver 2>&1`;
 die "$r\n" unless $r eq "";
-$r = `cp /tmp/moat-$rpmver.tgz /usr/src/redhat/SOURCES 2>&1`; die "$r\n" unless $r eq "";
-$r = `cp moat-$rpmver/moat.spec /usr/src/redhat/SPECS/moat-$rpmver.spec 2>&1`; die "$r\n" unless $r eq "";
+$r = `sudo cp /tmp/moat-$rpmver.tgz /usr/src/redhat/SOURCES 2>&1`; die "$r\n" unless $r eq "";
+$r = `sudo cp moat-$rpmver/moat.spec /usr/src/redhat/SPECS/moat-$rpmver.spec 2>&1`; die "$r\n" unless $r eq "";
 chdir "/usr/src/redhat" or die "Can't CD to /usr/src/redhat: $!\n";
-system "rpmbuild -ba -D 'VER $rpmver' -D 'REL 0' SPECS/moat-$rpmver.spec 2>&1";
+system "sudo rpmbuild -ba -D 'VER $rpmver' -D 'REL 0' SPECS/moat-$rpmver.spec 2>&1";
 print $r;
 $r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 
