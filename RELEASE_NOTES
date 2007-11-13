@@ -2,6 +2,12 @@
 MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
+V00-02-07  11/13/07
+ Issue    Fix/upgrade
+0001738: comms tests (MOAT, QUADTOOL, DMT, DOMAPPTEST.py) all need to have the ability to run in the foreground
+
+============================================================================
+
 V00-02-06  9/27/06
 
  Issue    Fix/upgrade
