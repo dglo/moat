@@ -2,7 +2,7 @@
 
 # tagtools
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
-# $Id: tagmoat,v 1.4 2010-03-09 18:48:51 jacobsen Exp $
+# $Id: tagmoat,v 1.5 2010-03-09 18:49:22 jacobsen Exp $
 
 use strict;
 
@@ -30,7 +30,6 @@ do {
     print "Enter tag name$defstr: ";
     $tag = <STDIN>; 
     chomp $tag;
-    print "default: $default    tag: $tag\n";
     if($tag eq "") {
 	$tag = $default; 
     }
