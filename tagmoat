@@ -2,7 +2,7 @@
 
 # tagtools
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
-# $Id: tagmoat,v 1.1 2005-07-12 20:06:52 jacobsen Exp $
+# $Id: tagmoat,v 1.2 2010-03-09 18:44:31 jacobsen Exp $
 
 use strict;
 
@@ -14,49 +14,26 @@ my $bfd_or_tag;
 my $deliver;
 
 do {
-    print "(N)ew tag or (B)FD-based tag? "; 
-    my $resp = <STDIN>; chomp $resp;
-    if($resp =~ /^n/i) {
-	$bfd_or_tag = "TAG";
-	print "Enter tag name: "; $tag = <STDIN>; chomp $tag;
-    } elsif($resp =~ /b/i) {
-	$bfd_or_tag = "BFD";
-	my $log = `cvs log Makefile | grep V`;
-	my $def = "";
-	print "List of existing tags:\n$log\n";
-	if($log =~ /(V\d\d-\d\d-\d\d)/) { $def = $1; }
-	print "Enter most recent BFD tag for this project [$def]: ";
-	my $bfd = <STDIN>; chomp $bfd;
-	if($bfd eq "") { $bfd = $def; }
-	my $major;
-	my $minor;
-	my $bug;
-	if($bfd =~ /V(\d\d)-(\d\d)-(\d\d)/) {
-	    $major = $1;
-	    $minor = $2;
-	    $bug   = $3;
-	    print "Are you creating a (major), (minor), or (bug) release? ";
-	    my $resp = <STDIN>; chomp $resp;
-	    if($resp =~ /^ma/) {
-		$major++;
-		$minor = 0;
-		$bug   = 0;
-		$deliver = "-j";
-		$tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
-	    } elsif($resp =~ /^mi/) {
-		$minor++;
-		$bug = 0;
-		$deliver = "-n";
-                $tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
-	    } elsif($resp =~ /^b/) {
-		$bug++;
-		$deliver = "-b";
-                $tag = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
-	    } else {
-		print "Huh?\n";
-	    }
-	}
-    } 
+    my $log = `cvs log Makefile | grep V`;
+    print "List of existing tags:\n$log\n";
+    my $default = "";
+    if($log =~ /(\d\d)-(\d\d)-(\d\d)/) {
+	my $major = $1;
+	my $minor = $2;
+	my $bug = $3;
+	$bug += 1;
+	$default = sprintf "V%02d-%02d-%02d", $major, $minor, $bug;
+    }
+    my $defstr = "";
+    if($default ne "") {
+	$defstr = " [$default]";
+    }
+    $tag = <STDIN>; 
+    chomp $tag;
+    print "default: $default    tag: $tag\n";
+    if($tag eq "") {
+	$tag = $default; 
+    }
 } until defined $tag;
 
 print "Create new release with release tag \"$tag\"? ";
@@ -90,27 +67,10 @@ if($resp =~ /^y/i) {
     print `cvs commit -m "Tagging current version as $tag..."`;
 }
 
-if($bfd_or_tag eq "TAG") {
-    print "Tag current release as $tag? ";
-    chomp(my $resp = <STDIN>);
-    if($resp =~ /^y/i) {
-	print `cd ..; cvs tag $tag $project; cd $project`;
-    }
-} elsif($bfd_or_tag eq "BFD") {
-    print "Deliver $tag? ";
-    chomp(my $resp = <STDIN>);
-    if($resp =~ /^y/i) {
-	chdir "..";
-	system "bfd deliver $deliver $project";
-	chdir "project";
-    }
-}
-
-print "Pollute version file to show HEAD? ";
+print "Tag current release as $tag? ";
 chomp(my $resp = <STDIN>);
 if($resp =~ /^y/i) {
-    create_verfile "HEAD!";
-    print `cvs commit -m "Mod of $verFile to show HEAD..." $verFile`;
+    print `cd ..; cvs tag $tag $project; cd $project`;
 }
 
 print "\n\nDone.\n";

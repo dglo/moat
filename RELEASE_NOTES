@@ -3,6 +3,7 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 
 V00-02-08 3/9/10
+0003855: Rip out BFD cruft from tagmoat script
 0003854: MOAT/stagedtests.pl vulnerable to false alarm if DOR clock ends in the hex digits "bad"
 0002004: sudo make rpm fails
 
