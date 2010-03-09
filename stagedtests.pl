@@ -762,6 +762,7 @@ sub check_log_files {
 		print $tail;
 # /dev/dhc0w0dA: 1000 msgs (last 188B, 1.19 MB tot, 27.11 sec, 45.86 kB/sec, ARR=0)
 		if($tail !~ m|/dev/dhc\d+w\d+d\S: \d+ msgs \(last|) {
+                    print "Unexpected result in $echoout: $tail\n";
 		    $retval = 1;
 		}
 	    }
@@ -771,6 +772,7 @@ sub check_log_files {
 		print;
 		# 10 msgs:
 		if(! /^\d\d\S\s+\d+\s+\S+\s+\d+$/ && ! /^\d+ msgs:$/) {
+		    print "Unexpected result echo_results_all.out: $_\n";
                     $retval = 1;
 		}
 	    }
@@ -783,6 +785,7 @@ sub check_log_files {
 	    print $tail;
 # /proc/driver/domhub/card0/pair0/domB/tcalib: 2380 tcals, 0 rdtimeouts, 0 wrtimeouts.
 	    if($tail !~ m|/proc/driver/domhub/card\d+/pair\d+/dom\S/tcalib: \d+ tcals|) {
+                print "Unexpected result in $tcalout - $tail\n";
 		$retval = 1;
 	    }
 	}
@@ -801,7 +804,7 @@ sub check_log_files {
 	    my @grep = `grep -i 'bad dt' $outfile`;
 	    foreach my $line(@grep) {
 		chomp $line;
-		if($line =~ /bad dt/i) {
+		if($line =~ /\s+BAD\s+DT/i) {
 		    print "$outfile: $line\n";
 		    $retval = 1;
 		}
