@@ -2,19 +2,19 @@
 
 # tagtools
 # John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
-# $Id: tagmoat,v 1.3 2010-03-09 18:44:54 jacobsen Exp $
+# $Id: tagmoat,v 1.4 2010-03-09 18:48:51 jacobsen Exp $
 
 use strict;
 
 print "Welcome to $0.\n";
 
 my $project = "moat";
-my $tag;
+my $tag = undef;
 my $deliver;
 
 do {
-    my $log = `cvs log Makefile | grep V`;
-    print "List of existing tags:\n$log\n";
+    my $log = `cvs log Makefile | grep V | head`;
+    print "List of recent existing tags:\n$log\n";
     my $default = "";
     if($log =~ /(\d\d)-(\d\d)-(\d\d)/) {
 	my $major = $1;
@@ -27,6 +27,7 @@ do {
     if($default ne "") {
 	$defstr = " [$default]";
     }
+    print "Enter tag name$defstr: ";
     $tag = <STDIN>; 
     chomp $tag;
     print "default: $default    tag: $tag\n";
