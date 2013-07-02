@@ -22,6 +22,9 @@ $rpmver =~ s/^V//;
 $rpmver =~ s/\-/\./g;
 print "RPM version is $rpmver.\n";
 
+# RPM build area
+my $RPM_ROOT = "$ENV{HOME}/rpmbuild";
+
 chdir ".." or die "Can't CD .. : $!\n";
 
 my $r;
@@ -29,10 +32,10 @@ $r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 $r = `cp -Rp moat moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 $r = `tar czf /tmp/moat-$rpmver.tgz --exclude=moat-$rpmver/CVS moat-$rpmver 2>&1`;
 die "$r\n" unless $r eq "";
-$r = `sudo cp /tmp/moat-$rpmver.tgz /usr/src/redhat/SOURCES 2>&1`; die "$r\n" unless $r eq "";
-$r = `sudo cp moat-$rpmver/moat.spec /usr/src/redhat/SPECS/moat-$rpmver.spec 2>&1`; die "$r\n" unless $r eq "";
-chdir "/usr/src/redhat" or die "Can't CD to /usr/src/redhat: $!\n";
-system "sudo rpmbuild -ba -D 'VER $rpmver' -D 'REL 0' SPECS/moat-$rpmver.spec 2>&1";
+$r = `cp /tmp/moat-$rpmver.tgz ${RPM_ROOT}/SOURCES 2>&1`; die "$r\n" unless $r eq "";
+$r = `cp moat-$rpmver/moat.spec ${RPM_ROOT}/SPECS/moat-$rpmver.spec 2>&1`; die "$r\n" unless $r eq "";
+chdir "${RPM_ROOT}" or die "Can't CD to ${RPM_ROOT}: $!\n";
+system "rpmbuild -ba -D 'VER $rpmver' -D 'REL 0' SPECS/moat-$rpmver.spec 2>&1";
 print $r;
 $r = `rm -rf moat-$rpmver 2>&1`; die "$r\n" unless $r eq "";
 
