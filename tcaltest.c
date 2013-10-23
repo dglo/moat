@@ -421,7 +421,7 @@ int getProcFile(char * filename, int len, char *arg, int *icard, int *ipair, cha
       fprintf(stderr, "Couldn't parse proc file string %s, sorry.\n", arg);
       return 1;
     }
-    memcpy(filename, arg, strlen(arg)>len?len:strlen(arg));
+    memcpy(filename, arg, strlen(arg)>len?len:(strlen(arg)+1));
   }
   return 0;
 }
