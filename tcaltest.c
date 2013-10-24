@@ -232,9 +232,9 @@ int main(int argc, char *argv[]) {
     usleep(10000); 
 
     for(itry=0; itry < MAX_TCAL_TRIES; itry++) {
-      nread = read(file, (char *) &tcalrec, sizeof(tcalrec));
+      nread = read(file, (char *) &tcalrec, DH_TCAL_STRUCT_LEN);
       /* printf("Read %d bytes.\n", nread);*/
-      if(nread != sizeof(tcalrec)) {
+      if(nread != DH_TCAL_STRUCT_LEN) {
 	if(itry == MAX_TCAL_TRIES-1) {
 	  printf("cal(%ld) READ FAILED: TIMEOUT!!!\n", icalib);
 	  fprintf(stderr,"Time calibration read timeout in trial %ld.\n", icalib);

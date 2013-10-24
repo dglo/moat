@@ -3,7 +3,8 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 John Kelley jkelley@icecube.wisc.edu
 
-V00-02-09 10/23/13
+V00-02-09 10/24/13
+0006727: Use platform-independent size of tcal struct
 0006723: tcaltest: proc file name string is corrupt, test fails
 
 ============================================================================

@@ -27,5 +27,8 @@ struct dh_tcalib_t {
   u16 domwf[DH_MAX_TCAL_WF_LEN];
 };
 
+/* Packed, no-padding length of time calibration structure (in B) */
+#define DH_TCAL_STRUCT_LEN (36+2*2*DH_MAX_TCAL_WF_LEN)
+
 #endif /* __DH_TCALIB__ */
 
