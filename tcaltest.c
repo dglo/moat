@@ -79,6 +79,8 @@ int main(int argc, char *argv[]) {
   unsigned long tdelay = 1000000;
   int option_index = 0, argstart, argcount;
   char datafile[NS];
+  unsigned char tcalrec_packed[DH_TCAL_STRUCT_LEN];
+  int offset = 0;
 
 #define MAXSKIP 1024
   char skipbuf[MAXSKIP];
@@ -232,48 +234,62 @@ int main(int argc, char *argv[]) {
     usleep(10000); 
 
     for(itry=0; itry < MAX_TCAL_TRIES; itry++) {
-      nread = read(file, (char *) &tcalrec, DH_TCAL_STRUCT_LEN);
-      /* printf("Read %d bytes.\n", nread);*/
-      if(nread != DH_TCAL_STRUCT_LEN) {
-	if(itry == MAX_TCAL_TRIES-1) {
-	  printf("cal(%ld) READ FAILED: TIMEOUT!!!\n", icalib);
-	  fprintf(stderr,"Time calibration read timeout in trial %ld.\n", icalib);
-	  dump_fpga(icard);
-	  dump_comstat(icard, ipair, cdom);
-	  exit(-1);
-	} else {
-	  if(! no_show) {
-	    fprintf(stderr,"cal(%ld) READ RETRY(%d)\n", icalib, itry);
-	  }
-	  usleep(1000);
-	  continue;
-	}
-      } else {
-	if(! tcal_data_ok(dor_clock, &tcalrec, icalib, last_dor_tx, last_dor_rx)) {
-	  fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
-	  if(survive_dqfail) {
-	    dqfail++;
-	  } else 
-	    exit(-1);
-	} else {
-	  last_dor_tx = tcalrec.dor_t0;
-	  last_dor_rx = tcalrec.dor_t3;
-	}
-	if(! no_show) {
-	  printf("cal(%ld) ", icalib);
-	  show_tcalrec(stdout, &tcalrec);
-	  fflush(stdout);
-	}
-	success++;
-      }
-      if(! no_show) {
-	printf("\n");
-      }
-      if(!dofile) close(file);
-      break;
-    }
-
-    //    sleep(1);
+        nread = read(file, tcalrec_packed, DH_TCAL_STRUCT_LEN);        
+        if(nread != DH_TCAL_STRUCT_LEN) {
+            if(itry == MAX_TCAL_TRIES-1) {
+                printf("cal(%ld) READ FAILED: TIMEOUT!!!\n", icalib);
+                fprintf(stderr,"Time calibration read timeout in trial %ld.\n", icalib);
+                dump_fpga(icard);
+                dump_comstat(icard, ipair, cdom);
+                exit(-1);
+            } else {
+                if(! no_show) {
+                    fprintf(stderr,"cal(%ld) READ RETRY(%d)\n", icalib, itry);
+                }
+                usleep(1000);
+                continue;
+            }         
+        } else {
+            offset = 0;
+            /* Unpack into struct */
+            memcpy(&tcalrec.hdr, tcalrec_packed+offset, sizeof(tcalrec.hdr));
+            offset += sizeof(tcalrec.hdr);
+            memcpy(&tcalrec.dor_t0, tcalrec_packed+offset, sizeof(tcalrec.dor_t0));
+            offset += sizeof(tcalrec.dor_t0);
+            memcpy(&tcalrec.dor_t3, tcalrec_packed+offset, sizeof(tcalrec.dor_t3));
+            offset += sizeof(tcalrec.dor_t3);
+            memcpy(tcalrec.dorwf, tcalrec_packed+offset, sizeof(tcalrec.dorwf[0])*DH_MAX_TCAL_WF_LEN);
+            offset += sizeof(tcalrec.dorwf[0])*DH_MAX_TCAL_WF_LEN;
+            memcpy(&tcalrec.dom_t1, tcalrec_packed+offset, sizeof(tcalrec.dom_t1));
+            offset += sizeof(tcalrec.dom_t1);
+            memcpy(&tcalrec.dom_t2, tcalrec_packed+offset, sizeof(tcalrec.dom_t2));
+            offset += sizeof(tcalrec.dom_t2);
+            memcpy(tcalrec.domwf, tcalrec_packed+offset, sizeof(tcalrec.domwf[0])*DH_MAX_TCAL_WF_LEN);
+            offset += sizeof(tcalrec.domwf[0])*DH_MAX_TCAL_WF_LEN;
+            
+            if(! tcal_data_ok(dor_clock, &tcalrec, icalib, last_dor_tx, last_dor_rx)) {
+                fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
+                if(survive_dqfail) {
+                    dqfail++;
+                } else 
+                    exit(-1);
+            } else {
+                last_dor_tx = tcalrec.dor_t0;
+                last_dor_rx = tcalrec.dor_t3;
+            }
+            if(! no_show) {
+                printf("cal(%ld) ", icalib);
+                show_tcalrec(stdout, &tcalrec);
+                fflush(stdout);
+            }
+            success++;
+        }
+        if(! no_show) {
+            printf("\n");
+        }
+        if(!dofile) close(file);
+        break;
+    }    
     usleep(tdelay);
   }
 
