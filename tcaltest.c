@@ -80,7 +80,6 @@ int main(int argc, char *argv[]) {
   int option_index = 0, argstart, argcount;
   char datafile[NS];
   unsigned char tcalrec_packed[DH_TCAL_STRUCT_LEN];
-  int offset = 0;
 
 #define MAXSKIP 1024
   char skipbuf[MAXSKIP];
@@ -250,23 +249,13 @@ int main(int argc, char *argv[]) {
                 continue;
             }         
         } else {
-            offset = 0;
-            /* Unpack into struct */
-            memcpy(&tcalrec.hdr, tcalrec_packed+offset, sizeof(tcalrec.hdr));
-            offset += sizeof(tcalrec.hdr);
-            memcpy(&tcalrec.dor_t0, tcalrec_packed+offset, sizeof(tcalrec.dor_t0));
-            offset += sizeof(tcalrec.dor_t0);
-            memcpy(&tcalrec.dor_t3, tcalrec_packed+offset, sizeof(tcalrec.dor_t3));
-            offset += sizeof(tcalrec.dor_t3);
-            memcpy(tcalrec.dorwf, tcalrec_packed+offset, sizeof(tcalrec.dorwf[0])*DH_MAX_TCAL_WF_LEN);
-            offset += sizeof(tcalrec.dorwf[0])*DH_MAX_TCAL_WF_LEN;
-            memcpy(&tcalrec.dom_t1, tcalrec_packed+offset, sizeof(tcalrec.dom_t1));
-            offset += sizeof(tcalrec.dom_t1);
-            memcpy(&tcalrec.dom_t2, tcalrec_packed+offset, sizeof(tcalrec.dom_t2));
-            offset += sizeof(tcalrec.dom_t2);
-            memcpy(tcalrec.domwf, tcalrec_packed+offset, sizeof(tcalrec.domwf[0])*DH_MAX_TCAL_WF_LEN);
-            offset += sizeof(tcalrec.domwf[0])*DH_MAX_TCAL_WF_LEN;
-            
+            if (! dh_tcalib_unpack(&tcalrec, tcalrec_packed)) {
+                fprintf(stderr,"Error unpacking time calibiration data\n");
+                if(survive_dqfail)
+                    dqfail++;
+                else 
+                    exit(-1);
+            }
             if(! tcal_data_ok(dor_clock, &tcalrec, icalib, last_dor_tx, last_dor_rx)) {
                 fprintf(stderr,"Time calibration data failed quality check in trial %ld.\n",icalib);
                 if(survive_dqfail) {
