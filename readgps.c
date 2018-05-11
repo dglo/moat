@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
@@ -29,11 +30,12 @@
 #define COL      ':'
 #define QUALPOS   13
 #define MAXRETRIES 3
+#define MAXFLUSH  11
 
 int usage(void) {
   fprintf(stderr,
-	  "Usage: readgps <card_proc_file>\n"
-	  "       readgps <card>\n"
+	  "Usage: readgps <card_proc_file> OR\n"
+	  "       readgps <card #>\n"
 	  "Options:  -d       Show difference in DOR clock ticks\n"
 	  "          -o       One-shot (single readout)\n"
 	  "          -w <n>   Wait n seconds between readout cycles\n"
@@ -42,6 +44,7 @@ int usage(void) {
 	  "          -f       Flag deviations from 20M ticks of delta time\n"
 	  "          -c       REQUIRE 20M clock tick time difference.\n"
 	  "          -g       Flag deviations from 1 sec in GPS times\n"
+	  "          -s       Flush DOR buffer at launch\n"
 	  "E.g., readgps /proc/driver/domhub/card0/syncgps\n");
   return -1;
 }
@@ -101,8 +104,10 @@ int main(int argc, char ** argv) {
   int flaggps    = 0;
   int doflag     = 0;
   int had_bad_dt = 0;
+  int doflush    = 0;
+
   while(1) {
-    char c = getopt(argc, argv, "dogchfi:w:");
+    char c = getopt(argc, argv, "dogchfsi:w:");
     if (c == -1) break;
     switch(c) {
     case 'd': dodiff = 1; break;
@@ -112,6 +117,7 @@ int main(int argc, char ** argv) {
     case 'c': dodt = 1; break;
     case 'f': doflag = 1; break;
     case 'g': flaggps = 1; break;
+    case 's': doflush = 1; break;
     case 'h':
     default:
       exit(usage());
@@ -138,6 +144,7 @@ int main(int argc, char ** argv) {
 
   char tsbuf[TSBUFLEN];
   int nr, fd;
+  int i, done;
   int tscount = 0;
   unsigned long long t, tlast;
 
@@ -148,6 +155,23 @@ int main(int argc, char ** argv) {
 
   long long last_t;
   int had_t = 0;
+
+  /* Flush all the buffered DOR timestamps if requested */
+  if (doflush) {
+    i = done = 0;
+    /* Note: for driver reasons(?), have to open/close every loop */
+    while (!done) {
+      fd = open(pfnam, O_RDONLY);
+      if(fd == -1) { 
+	fprintf(stderr,"Can't open file %s: %s\n", argv[optind], strerror(errno));
+	fprintf(stderr,"You may need a new driver revision: try V02-02-11 or higher.\n");
+	exit(errno);
+      }    
+      nr = read(fd, tsbuf, TSBUFLEN);
+      done = (nr == 0) || (i++ >= MAXFLUSH);
+      close(fd);
+    }
+  }
 
   while(1) {
     if(die) break;
