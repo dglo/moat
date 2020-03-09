@@ -348,7 +348,7 @@ int main(int argc, char *argv[]) {
 	  gettimeofday(&tlatest, NULL);
 	  deltasec = (tlatest.tv_sec - tstart.tv_sec) + 1.E-6*(tlatest.tv_usec - tstart.tv_usec);
 	  kbps = (((float) totbytes)/1000.) / deltasec;
-	  if(deltasec > MIN_DT_BEFORE_KBCHECK && kbps < (double) kbmin) {
+	  if (dokb && (deltasec > MIN_DT_BEFORE_KBCHECK) && (kbps < (double) kbmin)) {
 	    fprintf(stderr, "%s: Data rate (%2.2f kB/s) dropped below minimum (%d kB/s)!\n",
 		    filename, kbps, kbmin);
 	    close(filep);
@@ -512,7 +512,7 @@ int main(int argc, char *argv[]) {
     deltasec = (tlatest.tv_sec - tstart.tv_sec) + 1.E-6*(tlatest.tv_usec - tstart.tv_usec);
     //fprintf(stderr,"delt %ld deltasec %2.6lf.\n", delt, deltasec);
     kbps = (((float) totbytes)/1000.) / deltasec;
-    if(deltasec > MIN_DT_BEFORE_KBCHECK && kbps < (double) kbmin) {
+    if (dokb && (deltasec > MIN_DT_BEFORE_KBCHECK) && (kbps < (double) kbmin)) {
       fprintf(stderr, "%s: Data rate (%2.2f kB/s) dropped below minimum (%d kB/s)!\n",
 	      filename, kbps, kbmin);
       close(filep);

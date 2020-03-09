@@ -3,6 +3,12 @@ MOAT test scripts
 John Jacobsen jacobsen@npxdesigns.com
 John Kelley jkelley@icecube.wisc.edu
 
+V00-02-13 03/09/20
+
+8780: quadtool: bogus (?) minimum data rate requirement
+
+============================================================================
+
 V00-02-12 05/11/18
 8414: readgps: add option to flush DOR buffer
 
