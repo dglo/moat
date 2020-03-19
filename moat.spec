@@ -18,6 +18,8 @@ IceCube MOAT testing applications
 
 %setup -q
 
+%define debug_package %{nil}
+
 %build
 make clean; make
 
